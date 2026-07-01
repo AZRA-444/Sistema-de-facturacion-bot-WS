@@ -6,7 +6,7 @@ const state = {
   montoFinalBS: 0,
   descUSD: 0,
   descBS: 0,
-  compraExitosa: false
+  compraExitosa: false,
 };
 
 const inputVendedor = document.getElementById("nameVendedor");
@@ -42,11 +42,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
       if (!name || !documentID) {
         event.preventDefault();
-        alert("Debe registrar los datos del cliente para continuar con la factura.");
+        alert(
+          "Debe registrar los datos del cliente para continuar con la factura.",
+        );
       }
     });
   }
-  
+
   // Inicializadores
   calcularPrecioTotal();
   inicializarTasa();
@@ -59,7 +61,7 @@ function formatText(input) {
   let valor = input.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g, "");
   input.value = valor
     .split(" ")
-    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
     .join(" ");
 }
 
@@ -77,7 +79,12 @@ function formatPhone(input) {
   if (telefono.length > 4 && telefono.length <= 7) {
     telefono = telefono.slice(0, 4) + "-" + telefono.slice(4);
   } else if (telefono.length > 7) {
-    telefono = telefono.slice(0, 4) + "-" + telefono.slice(4, 7) + "-" + telefono.slice(7, 11);
+    telefono =
+      telefono.slice(0, 4) +
+      "-" +
+      telefono.slice(4, 7) +
+      "-" +
+      telefono.slice(7, 11);
   }
   input.value = telefono;
 }
@@ -96,13 +103,13 @@ function dataClientSave() {
   if (!name || !secondName || !documentID || !numberPhone) {
     alert("Por favor, llena todos los datos del cliente correctamente.");
     return;
-  } 
-  
+  }
+
   if (cedulaLimpia < 100000) {
     alert("Número de cédula inválido.");
     return;
-  } 
-  
+  }
+
   if (numberPhone.length < 13) {
     alert("Número telefónico incorrecto, ¡número(s) faltante!");
     return;
@@ -141,7 +148,9 @@ async function obtenerTasaDolar(inputTasa) {
       }
     }
   } catch (error) {
-    console.warn("Fallo de conexión o API. Se mantendrá el valor manual o en caché.");
+    console.warn(
+      "Fallo de conexión o API. Se mantendrá el valor manual o en caché.",
+    );
   }
 }
 
@@ -206,9 +215,11 @@ function acceptProductData() {
 }
 
 function limpiarFormulario() {
-  ["cantProduct", "nameProduct", "prcUndProduct", "prcTotalProduct"].forEach(id => {
-    document.getElementById(id).value = "";
-  });
+  ["cantProduct", "nameProduct", "prcUndProduct", "prcTotalProduct"].forEach(
+    (id) => {
+      document.getElementById(id).value = "";
+    },
+  );
 }
 
 //--- ACTUALIZACION DE TABLA ---//
@@ -234,8 +245,14 @@ function actualizarTabla() {
     tbody.appendChild(fila);
   });
 
-  const subTotalUSD = state.listaProductos.reduce((acc, p) => acc + p.precioTotal, 0);
-  const subTotalBS = state.listaProductos.reduce((acc, p) => acc + p.precioTotalBS, 0);
+  const subTotalUSD = state.listaProductos.reduce(
+    (acc, p) => acc + p.precioTotal,
+    0,
+  );
+  const subTotalBS = state.listaProductos.reduce(
+    (acc, p) => acc + p.precioTotalBS,
+    0,
+  );
 
   let porcentajeDescuento = 0;
   if (subTotalUSD > 100) porcentajeDescuento = 25;
@@ -256,7 +273,9 @@ function actualizarTabla() {
     }
 
     totalFinal.innerHTML = `
-        ${porcentajeDescuento > 0 ? `
+        ${
+          porcentajeDescuento > 0
+            ? `
           <div>
               <h2>Sub-Total:</h2>
               <h2>$${subTotalUSD.toFixed(2)} / ${subTotalBS.toFixed(2)}Bs</h2>
@@ -265,7 +284,9 @@ function actualizarTabla() {
               <h2>Descuento (-${porcentajeDescuento}%):</h2>
               <h2>-$${state.descUSD.toFixed(2)} / -${state.descBS.toFixed(2)}Bs</h2>
           </div>
-        ` : ""} 
+        `
+            : ""
+        } 
         <div class="total-procesar">
           <div>
             <h1>Total: </h1>
@@ -507,9 +528,9 @@ async function finalizarCompra() {
   const esEfectivoDolar = metodoSeleccionado === "ED";
   const esEfectivoBolivar = metodoSeleccionado === "EBS";
 
-  const montoRecibido = esEfectivoDolar 
+  const montoRecibido = esEfectivoDolar
     ? Number(document.getElementById("EDMontoRecibido")?.value) || 0
-    : esEfectivoBolivar 
+    : esEfectivoBolivar
       ? Number(document.getElementById("EBSMontoRecibido")?.value) || 0
       : 0;
 
@@ -519,10 +540,11 @@ async function finalizarCompra() {
       ? document.getElementById("EBSVueltoEntrega")?.value || "0.00"
       : "0.00";
 
-  const vendedorRegistrado = localStorage.getItem("vendedorActual") || "Cajero General";
+  const vendedorRegistrado =
+    localStorage.getItem("vendedorActual") || "Cajero General";
 
   const facturaData = {
-    id_factura: "FAC-" + Date.now(), 
+    id_factura: "FAC-" + Date.now(),
     vendedor: vendedorRegistrado,
     id_cliente: "Cli-" + Date.now(),
     nombre: document.getElementById("nameClient")?.value || "Consumidor",
@@ -548,7 +570,7 @@ async function finalizarCompra() {
       document.getElementById("observacionesED")?.value ||
       document.getElementById("observacionesEBS")?.value ||
       document.getElementById("observacionesOTROS")?.value ||
-      "Sin observaciones"
+      "Sin observaciones",
   };
 
   boton.disabled = true;
@@ -560,26 +582,34 @@ async function finalizarCompra() {
     const response = await fetch(BACKEND_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(facturaData)
+      body: JSON.stringify(facturaData),
     });
 
-    const resultado = await response.json();
+    const text = await response.text();
+    console.log("RAW BACKEND:", text);
+
+    let resultado;
+
+    try {
+      resultado = JSON.parse(text);
+    } catch (e) {
+      throw new Error("Backend no devolvió JSON válido");
+    }
 
     if (!response.ok || resultado.status === "error") {
       throw new Error(resultado.message || "Error al guardar en el servidor");
     }
 
     mostrarModalExito();
-    
-    state.compraExitosa = true; 
+
+    state.compraExitosa = true;
     state.listaProductos = [];
     actualizarTabla();
     ocultarSeccionPagos();
 
     setTimeout(() => {
-      location.reload(); 
+      location.reload();
     }, 2000);
-
   } catch (error) {
     state.compraExitosa = false;
 
