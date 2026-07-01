@@ -19,7 +19,7 @@ if (inputVendedor) {
   });
 }
 
-const BACKEND_API_URL = "/api/guardar_factura";
+const BACKEND_API_URL = "/api/guardar-factura";
 
 //--- BLOQUEAR RECARGA ---//
 window.addEventListener("beforeunload", (event) => {
