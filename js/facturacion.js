@@ -582,19 +582,10 @@ async function finalizarCompra() {
     const response = await fetch(BACKEND_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(facturaData),
+      body: JSON.stringify(facturaData)
     });
 
-    const text = await response.text();
-    console.log("RAW BACKEND:", text);
-
-    let resultado;
-
-    try {
-      resultado = JSON.parse(text);
-    } catch (e) {
-      throw new Error("Backend no devolvió JSON válido");
-    }
+    const resultado = await response.json();
 
     if (!response.ok || resultado.status === "error") {
       throw new Error(resultado.message || "Error al guardar en el servidor");
