@@ -100,25 +100,23 @@ class handler(BaseHTTPRequestHandler):
     # =========================
     # ⬆ SUBIR PDF A SUPABASE
     # =========================
-    def subir_pdf(self, buffer, factura_id):
-        filename = f"{factura_id}.pdf"
+def subir_pdf(self, buffer, factura_id):
+    filename = f"{factura_id}.pdf"
 
-        url = f"{URL_SUPABASE}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
+    url = f"{URL_SUPABASE}/storage/v1/object/{SUPABASE_BUCKET}/{filename}?upsert=true"
 
-        headers = {
-            "apikey": KEY_SUPABASE,
-            "Authorization": f"Bearer {KEY_SUPABASE}",
-            "Content-Type": "application/pdf"
-        }
+    headers = {
+        "apikey": KEY_SUPABASE,
+        "Authorization": f"Bearer {KEY_SUPABASE}",
+        "Content-Type": "application/pdf"
+    }
 
-        r = requests.post(url, data=buffer.read(), headers=headers)
+    r = requests.post(url, data=buffer.read(), headers=headers)
 
-        if r.status_code not in [200, 201]:
-            raise Exception(f"Error subiendo PDF: {r.text}")
+    if r.status_code not in [200, 201]:
+        raise Exception(f"Error subiendo PDF: {r.text}")
 
-        public_url = f"{URL_SUPABASE}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}"
-
-        return public_url
+    return f"{URL_SUPABASE}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}"
 
     # =========================
     # POST MAIN
