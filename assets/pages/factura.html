@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../css/main.css" />
+    <title>Facturación</title>
+  </head>
+
+</head>
+<body>
+  <div class="factura" id="factura">
+    <div class="header">
+      <h1>FACTURA</h1>
+      <p id="id_factura"></p>
+    </div>
+
+    <div class="info">
+      <div><strong>Cliente:</strong> <span id="cliente"></span></div>
+      <div><strong>Cédula:</strong> <span id="cedula"></span></div>
+      <div><strong>Teléfono:</strong> <span id="telefono"></span></div>
+      <div><strong>Vendedor:</strong> <span id="vendedor"></span></div>
+      <div><strong>Fecha:</strong> <span id="fecha"></span></div>
+    </div>
+
+    <table id="tabla_productos">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Cantidad</th>
+          <th>Precio Unit.</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="total">
+      <div>Subtotal USD: <span id="subtotal_usd"></span></div>
+      <div>Descuento USD: <span id="descuento_usd"></span></div>
+      <div><strong>Total USD: <span id="total_usd"></span></strong></div>
+      <div>Total Bs: <span id="total_bs"></span></div>
+    </div>
+
+    <div style="text-align:center; margin-top:40px; color:#666;">
+      <p>Método de pago: <span id="metodo_pago"></span></p>
+      <p id="referencia_info"></p>
+    </div>
+  </div>
+
+<script>
+    async function cargarFactura() {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+
+    if (!id) return;
+
+    const SUPABASE_URL = 'https://etfdwjbgrbxfuoltpgqa.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0ZmR3amJncmJ4ZnVvbHRwZ3FhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3OTg0NDQsImV4cCI6MjA5ODM3NDQ0NH0.Ap4HsuDjA43fKlTA8DP_ljwIn6vnE_pEw1LiMmFngvU';
+
+    try {
+        // Opción 1: Simple
+        const [resFactura, resDetalles] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/facturas?id_factura=eq.${id}&select=*`, {
+            headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            }
+        }),
+        fetch(`${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${id}&select=*`, {
+            headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            }
+        })
+        ]);
+
+        const factura = (await resFactura.json())[0];
+        const detalles = await resDetalles.json();
+
+    // ... resto del código igual
+
+        // Renderizar
+        document.getElementById('id_factura').textContent = `N° ${factura.id_factura}`;
+        document.getElementById('cliente').textContent = `${factura.nombre} ${factura.apellido || ''}`;
+        document.getElementById('cedula').textContent = factura.cedula || 'N/A';
+        document.getElementById('telefono').textContent = factura.telefono;
+        document.getElementById('vendedor').textContent = factura.vendedor || 'N/A';
+        document.getElementById('fecha').textContent = new Date(factura.fecha).toLocaleString('es-VE');
+
+        document.getElementById('subtotal_usd').textContent = factura.subtotal_usd?.toFixed(2) || '0.00';
+        document.getElementById('descuento_usd').textContent = factura.descuento_usd?.toFixed(2) || '0.00';
+        document.getElementById('total_usd').textContent = factura.total_usd?.toFixed(2) || '0.00';
+        document.getElementById('total_bs').textContent = factura.total_bs?.toFixed(2) || '0.00';
+
+        document.getElementById('metodo_pago').textContent = factura.metodo_pago || 'N/A';
+        if (factura.referencia) {
+          document.getElementById('referencia_info').textContent = `Referencia: ${factura.referencia} - ${factura.banco || ''}`;
+        }
+
+        // Productos
+        const tbody = document.querySelector('#tabla_productos tbody');
+        tbody.innerHTML = '';
+        detalles.forEach(d => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${d.nombre_producto}</td>
+            <td>${d.cantidad}</td>
+            <td>$${d.precio_unitario}</td>
+            <td>$${d.precio_total}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+      } catch (e) {
+        document.getElementById('factura').innerHTML = `<h2>Error: ${e.message}</h2>`;
+      }
+    }
+
+    window.onload = cargarFactura;
+  </script>
+</body>
+</html>
