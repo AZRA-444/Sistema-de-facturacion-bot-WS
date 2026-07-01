@@ -8,6 +8,7 @@ KEY_SUPABASE = os.environ.get("SUPABASE_SECRET_KEY", "")
 URL_PUENTE = os.environ.get("URL_PUENTE_WHATSAPP", "")
 FRONTEND_DOMAIN = os.environ.get("FRONTEND_DOMAIN", "https://sistema-de-facturacion-bot-ws.vercel.app")
 
+
 class handler(BaseHTTPRequestHandler):
 
     def _send_cors_headers(self):
@@ -22,7 +23,7 @@ class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            # Leer body
+            # Leer el body de la petición
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
             factura_data = json.loads(post_data.decode('utf-8'))
@@ -36,7 +37,7 @@ class handler(BaseHTTPRequestHandler):
             if not isinstance(factura_data.get("productos"), list) or len(factura_data["productos"]) == 0:
                 raise ValueError("La factura debe contener al menos un producto")
 
-            # ====================== PREPARAR PAYLOAD FACTURA ======================
+            # ====================== PREPARAR FACTURA ======================
             headers_supabase = {
                 "apikey": KEY_SUPABASE,
                 "Authorization": f"Bearer {KEY_SUPABASE}",
@@ -62,7 +63,7 @@ class handler(BaseHTTPRequestHandler):
                 "banco": factura_data.get("banco"),
             }
 
-            # ====================== INSERTAR FACTURA ======================
+            # ====================== INSERTAR EN SUPABASE ======================
             res_factura = requests.post(
                 f"{URL_SUPABASE}/rest/v1/facturas",
                 json=factura_payload,
@@ -92,49 +93,47 @@ class handler(BaseHTTPRequestHandler):
                     timeout=10
                 )
                 if res_detalles.status_code not in (200, 201):
-                    print(f"⚠️ Error en detalles: {res_detalles.text}")
+                    print(f"⚠️ Error guardando detalles: {res_detalles.text}")
 
-            # ====================== LINK Y WHATSAPP ====================== #
+            # ====================== LINK ======================
+            link_factura = f"{FRONTEND_DOMAIN}/factura.html?id={factura_data['id_factura']}"
 
-                if URL_PUENTE and factura_data.get("telefono") and factura_data["telefono"] != "N/A":
-                    telefono = factura_data["telefono"].strip()
-                    
-                    # Normalizar número (importante para Venezuela)
+            # ====================== WHATSAPP ======================
+            telefono = factura_data.get("telefono", "").strip()
+            if URL_PUENTE and telefono and telefono != "N/A":
+                try:
+                    # Normalizar número
                     if telefono.startswith("0"):
                         telefono = "+58" + telefono[1:]
                     elif not telefono.startswith("+"):
-                        telefono = "+58" + telefono
-                
+                        telefono = "+58" + telefono.lstrip("58")
+
                     mensaje = (
-                        f"👋 Hola *{factura_data['nombre']}*\n\n"
+                        f"👋 Hola *{factura_data.get('nombre', 'Cliente')}*\n\n"
                         f"🧾 Tu factura *{factura_data['id_factura']}* está lista:\n"
                         f"{link_factura}\n\n"
-                        f"💰 Total: ${factura_data.get('total_usd', 0)} USD\n"
+                        f"💰 Total: ${float(factura_data.get('total_usd', 0)):.2f} USD\n"
                         f"Gracias por tu compra ✨"
                     )
-                
-                    payload = {
-                        "to": telefono,
-                        "message": mensaje
-                    }
-                
-                    try:
-                        print(f"📤 Enviando WhatsApp a: {telefono}")  # Log para Vercel
-                        response = requests.post(
-                            f"{URL_PUENTE}/send-message",
-                            json=payload,
-                            timeout=10
-                        )
-                        print(f"📩 Respuesta WhatsApp: {response.status_code} - {response.text[:200]}")
-                        
-                        if response.status_code not in (200, 201):
-                            print("⚠️ WhatsApp Bridge rechazó la petición")
-                            
-                    except Exception as e:
-                        print("❌ Error enviando WhatsApp:", str(e))
-                else:
-                    print("⚠️ WhatsApp no se intentó: URL_PUENTE vacío o teléfono inválido")
-            # ====================== RESPUESTA EXITOSA ======================
+
+                    payload = {"to": telefono, "message": mensaje}
+
+                    print(f"📤 Enviando WhatsApp a: {telefono}")
+
+                    response = requests.post(
+                        f"{URL_PUENTE}/send-message",
+                        json=payload,
+                        timeout=10
+                    )
+
+                    print(f"📩 Respuesta WhatsApp: {response.status_code} - {response.text[:200]}")
+
+                except Exception as e:
+                    print(f"❌ Error enviando WhatsApp: {str(e)}")
+            else:
+                print("⚠️ WhatsApp omitido: URL_PUENTE o teléfono no válido")
+
+            # ====================== RESPUESTA AL FRONTEND ======================
             self.send_response(200)
             self._send_cors_headers()
             self.send_header('Content-type', 'application/json')
@@ -152,7 +151,7 @@ class handler(BaseHTTPRequestHandler):
         except ValueError as ve:
             self._error_response(str(ve))
         except Exception as e:
-            print("Error backend:", str(e))  # Para logs en Vercel
+            print("Error backend:", str(e))
             self._error_response(str(e))
 
     def _error_response(self, message):
@@ -164,6 +163,3 @@ class handler(BaseHTTPRequestHandler):
             "status": "error",
             "message": message
         }).encode('utf-8'))
-
-
-
