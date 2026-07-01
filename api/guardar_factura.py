@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 URL_SUPABASE = os.environ.get("SUPABASE_URL", "")
 KEY_SUPABASE = os.environ.get("SUPABASE_SECRET_KEY", "")
 URL_PUENTE = os.environ.get("URL_PUENTE_WHATSAPP", "")
-FRONTEND_DOMAIN = os.environ.get("FRONTEND_DOMAIN", "https://tu-proyecto.vercel.app")
+FRONTEND_DOMAIN = os.environ.get("FRONTEND_DOMAIN", "https://sistema-de-facturacion-bot-ws.vercel.app")
 
 class handler(BaseHTTPRequestHandler):
 
