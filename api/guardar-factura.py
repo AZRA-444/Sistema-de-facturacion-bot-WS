@@ -5,52 +5,42 @@ import requests
 
 URL_SUPABASE = os.environ.get("SUPABASE_URL", "")
 KEY_SUPABASE = os.environ.get("SUPABASE_SECRET_KEY", "")
-URL_PUENTE = os.environ.get("URL_PUENTE_WHATSAPP", "")
+# Configura tu dominio real aquí o usa la variable de entorno FRONTEND_DOMAIN
 FRONTEND_DOMAIN = os.environ.get("FRONTEND_DOMAIN", "https://sistema-de-facturacion-bot-ws.vercel.app")
 
-
 class handler(BaseHTTPRequestHandler):
-
-    def _send_cors_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-
+    
     def do_OPTIONS(self):
         self.send_response(200)
-        self._send_cors_headers()
+        self.send_header('Access-Control-Allow-Origin', '*') 
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.end_headers()
 
     def do_POST(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+        
         try:
-            # Leer el body de la petición
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
             factura_data = json.loads(post_data.decode('utf-8'))
-
-            # ====================== VALIDACIÓN ======================
-            required_fields = ["id_factura", "nombre", "telefono", "productos"]
-            for field in required_fields:
-                if not factura_data.get(field):
-                    raise ValueError(f"Campo requerido faltante: {field}")
-
-            if not isinstance(factura_data.get("productos"), list) or len(factura_data["productos"]) == 0:
-                raise ValueError("La factura debe contener al menos un producto")
-
-            # ====================== PREPARAR FACTURA ======================
+            
+            # ========================================================
+            # 1. Guardado distribuido en la Base de Datos (Dos Tablas)
+            # ========================================================
             headers_supabase = {
                 "apikey": KEY_SUPABASE,
                 "Authorization": f"Bearer {KEY_SUPABASE}",
                 "Content-Type": "application/json",
                 "Prefer": "return=minimal"
             }
-
+            
+            # TABLA A: Cabecera de la Factura
             factura_payload = {
-                "id_factura": factura_data["id_factura"],
-                "nombre": factura_data["nombre"],
+                "id_factura": factura_data.get("id_factura"),
+                "nombre": factura_data.get("nombre"),
                 "apellido": factura_data.get("apellido", ""),
                 "cedula": factura_data.get("cedula", ""),
-                "telefono": factura_data["telefono"],
+                "telefono": factura_data.get("telefono"),
                 "vendedor": factura_data.get("vendedor", "Cajero General"),
                 "subtotal_usd": factura_data.get("subtotal_usd"),
                 "descuento_usd": factura_data.get("descuento_usd", 0),
@@ -62,106 +52,63 @@ class handler(BaseHTTPRequestHandler):
                 "referencia": factura_data.get("referencia"),
                 "banco": factura_data.get("banco"),
             }
-
-            # ====================== INSERTAR EN SUPABASE ======================
-            res_factura = requests.post(
-                f"{URL_SUPABASE}/rest/v1/facturas",
-                json=factura_payload,
-                headers=headers_supabase,
-                timeout=10
-            )
-
-            if res_factura.status_code not in (200, 201):
-                raise Exception(f"Error Supabase Factura: {res_factura.status_code} - {res_factura.text[:200]}")
-
-            # ====================== INSERTAR DETALLES ======================
-            detalles = []
-            for p in factura_data["productos"]:
-                detalles.append({
-                    "id_factura": factura_data["id_factura"],
-                    "nombre_producto": p.get("nombre") or p.get("nombre_producto"),
-                    "cantidad": p["cantidad"],
-                    "precio_unitario": p["precioUnitario"],
-                    "precio_total": p["precioTotal"]
-                })
-
-            if detalles:
-                res_detalles = requests.post(
-                    f"{URL_SUPABASE}/rest/v1/factura_detalles",
-                    json=detalles,
-                    headers=headers_supabase,
-                    timeout=10
-                )
-                if res_detalles.status_code not in (200, 201):
-                    print(f"⚠️ Error guardando detalles: {res_detalles.text}")
-
-            # ====================== LINK ======================
-            link_factura = f"{FRONTEND_DOMAIN}/factura.html?id={factura_data['id_factura']}"
-
-            # ====================== WHATSAPP ======================
-            telefono = str(factura_data.get("telefono", "")).strip()
             
-            if URL_PUENTE and telefono and telefono != "N/A":
+            url_facturas = f"{URL_SUPABASE}/rest/v1/facturas"
+            res_factura = requests.post(url_facturas, json=factura_payload, headers=headers_supabase, timeout=10)
+            
+            if res_factura.status_code not in [200, 201]:
+                raise Exception(f"Error de Supabase (Facturas): {res_factura.text}")
+            
+            # TABLA B: Detalles de la Factura (Productos)
+            detalles = []
+            for p in factura_data.get("productos", []):
+                detalles.append({
+                    "id_factura": factura_data.get("id_factura"),
+                    "nombre_producto": p.get("nombre") or p.get("nombre_producto"),
+                    "cantidad": p.get("cantidad"),
+                    "precio_unitario": p.get("precioUnitario") or p.get("precio_unitario"),
+                    "precio_total": p.get("precioTotal") or p.get("precio_total")
+                })
+            
+            if detalles:
+                url_detalles = f"{URL_SUPABASE}/rest/v1/factura_detalles"
+                res_detalles = requests.post(url_detalles, json=detalles, headers=headers_supabase, timeout=10)
+                if res_detalles.status_code not in [200, 201]:
+                    print(f"⚠️ Alerta: No se guardaron los detalles de los productos: {res_detalles.text}")
+
+            # ========================================================
+            # 2. Envío al Puente Local de WhatsApp (Lógica Intacta)
+            # ========================================================
+            URL_PUENTE = os.environ.get("URL_PUENTE_WHATSAPP", "")
+            telefono_cliente = factura_data.get("telefono")
+            nombre_cliente = factura_data.get("nombre", "Cliente")
+            id_factura = factura_data.get("id_factura")
+            
+            if URL_PUENTE and telefono_cliente and telefono_cliente != "N/A":
+                link_factura = f"{FRONTEND_DOMAIN}/factura.html?id={id_factura}"
+                
+                payload_puente = {
+                    "to": telefono_cliente,
+                    "message": f"👋 ¡Hola, *{nombre_cliente}*!\n\nAquí tienes el link de tu factura digital:\n🔗 {link_factura}\n\n¡Gracias por tu compra! ✨"
+                }
+                
                 try:
-                    # Dejamos el número limpio de espacios o símbolos. 
-                    # Tu server.js se encargará de poner el '58' de forma perfecta y segura.
-                    telefono_limpio = "".join(filter(str.isdigit, telefono))
-                    
-                    # Evitamos URLs rotas si pones una barra / de más en las variables de entorno
-                    url_final_puente = f"{URL_PUENTE.rstrip('/')}/send-message"
+                    # El .rstrip('/') previene errores por barras consecutivas si la ENV trae un / al final
+                    url_endpoint_puente = f"{URL_PUENTE.rstrip('/')}/send-message"
+                    requests.post(url_endpoint_puente, json=payload_puente, timeout=4)
+                except Exception as ws_err:
+                    print(f"⚠️ Alerta: El puente no procesó el mensaje: {ws_err}")
 
-                    mensaje = (
-                        f"👋 Hola *{factura_data.get('nombre', 'Cliente')}*\n\n"
-                        f"🧾 Tu factura *{factura_data['id_factura']}* está lista:\n"
-                        f"{link_factura}\n\n"
-                        f"💰 Total: ${float(factura_data.get('total_usd', 0)):.2f} USD\n"
-                        f"Gracias por tu compra ✨"
-                    )
-
-                    payload = {"to": telefono_limpio, "message": mensaje}
-
-                    print(f"📤 Enviando WhatsApp a través del puente: {telefono_limpio}")
-
-                    response = requests.post(
-                        url_final_puente,
-                        json=payload,
-                        timeout=10
-                    )
-
-                    print(f"📩 Respuesta WhatsApp del puente: {response.status_code} - {response.text[:200]}")
-
-                except Exception as e:
-                    print(f"❌ Error enviando WhatsApp: {str(e)}")
-            else:
-                print("⚠️ WhatsApp omitido: URL_PUENTE o teléfono no válido")
-
-            # ====================== RESPUESTA AL FRONTEND ======================
+            # 3. Respuesta exitosa al Frontend
             self.send_response(200)
-            self._send_cors_headers()
             self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*') 
             self.end_headers()
-
-            self.wfile.write(json.dumps({
-                "status": "success",
-                "id_factura": factura_data["id_factura"],
-                "link": link_factura,
-                "message": "Factura procesada correctamente"
-            }).encode('utf-8'))
-
-        except json.JSONDecodeError:
-            self._error_response("JSON inválido en la petición")
-        except ValueError as ve:
-            self._error_response(str(ve))
+            self.wfile.write(json.dumps({"status": "success", "message": "Proceso completado"}).encode('utf-8'))
+            
         except Exception as e:
-            print("Error backend:", str(e))
-            self._error_response(str(e))
-
-    def _error_response(self, message):
-        self.send_response(400)
-        self._send_cors_headers()
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({
-            "status": "error",
-            "message": message
-        }).encode('utf-8'))
+            self.send_response(400)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
