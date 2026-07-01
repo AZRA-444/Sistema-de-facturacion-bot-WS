@@ -1,115 +1,205 @@
-from flask import Flask, request, jsonify
+from http.server import BaseHTTPRequestHandler
+import json
+import os
 import requests
-import uuid
 from datetime import datetime
+from io import BytesIO
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
 
-app = Flask(__name__)
+URL_SUPABASE = os.environ.get("SUPABASE_URL", "")
+KEY_SUPABASE = os.environ.get("SUPABASE_SECRET_KEY", "")
+URL_PUENTE = os.environ.get("URL_PUENTE_WHATSAPP", "")
+SUPABASE_BUCKET = "facturas"
 
-SUPABASE_URL = "TU_SUPABASE_URL"
-SUPABASE_KEY = "TU_SUPABASE_KEY"
-
-headers = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
+headers_supabase = {
+    "apikey": KEY_SUPABASE,
+    "Authorization": f"Bearer {KEY_SUPABASE}",
     "Content-Type": "application/json"
 }
 
-@app.route("/api/guardar_factura", methods=["POST"])
-def guardar_factura():
-    try:
-        data = request.json
+class handler(BaseHTTPRequestHandler):
 
-        # =========================
-        # 1. ID ÚNICO DE FACTURA
-        # =========================
-        factura_id = data.get("id_factura", str(uuid.uuid4()))
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.end_headers()
 
-        # =========================
-        # 2. FACTURA PRINCIPAL
-        # =========================
-        factura = {
-            "id": factura_id,
-            "vendedor": data.get("vendedor"),
-            "cliente": data.get("nombre"),
-            "apellido": data.get("apellido"),
-            "cedula": data.get("cedula"),
-            "telefono": data.get("telefono"),
+    # =========================
+    # 🧾 GENERAR PDF EN MEMORIA
+    # =========================
+    def generar_pdf(self, factura):
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer)
 
-            "subtotal_usd": data.get("subtotal_usd"),
-            "subtotal_bs": data.get("subtotal_bs"),
-            "descuento_usd": data.get("descuento_usd"),
-            "descuento_bs": data.get("descuento_bs"),
-            "total_usd": data.get("total_usd"),
-            "total_bs": data.get("total_bs"),
+        styles = getSampleStyleSheet()
+        contenido = []
 
-            "metodo_pago": data.get("metodo_pago"),
-            "referencia": data.get("referencia"),
-            "banco": data.get("banco"),
-            "monto_recibido": data.get("monto_recibido"),
-            "vuelto_entregado": data.get("vuelto_entregado"),
-            "observaciones": data.get("observaciones"),
+        contenido.append(Paragraph("FACTURA DE COMPRA", styles["Title"]))
+        contenido.append(Spacer(1, 12))
 
-            "fecha": datetime.now().isoformat()
+        # INFO CLIENTE
+        cliente_info = [
+            ["Cliente", f"{factura['nombre']} {factura['apellido']}"],
+            ["Cédula", factura["cedula"]],
+            ["Teléfono", factura["telefono"]],
+            ["Vendedor", factura["vendedor"]],
+            ["Fecha", str(datetime.now())]
+        ]
+
+        tabla_cliente = Table(cliente_info)
+        tabla_cliente.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
+        ]))
+
+        contenido.append(tabla_cliente)
+        contenido.append(Spacer(1, 20))
+
+        # PRODUCTOS
+        productos = [["Producto", "Cant", "P/U", "Total"]]
+
+        for p in factura.get("productos", []):
+            productos.append([
+                p["nombre"],
+                str(p["cantidad"]),
+                f"${p['precioUnitario']}",
+                f"${p['precioTotal']}"
+            ])
+
+        tabla_prod = Table(productos)
+        tabla_prod.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey)
+        ]))
+
+        contenido.append(tabla_prod)
+        contenido.append(Spacer(1, 20))
+
+        # TOTALES
+        totales = [
+            ["Subtotal USD", factura["subtotal_usd"]],
+            ["Descuento", factura["descuento_usd"]],
+            ["TOTAL USD", factura["total_usd"]]
+        ]
+
+        tabla_totales = Table(totales)
+        tabla_totales.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
+        ]))
+
+        contenido.append(tabla_totales)
+
+        doc.build(contenido)
+        buffer.seek(0)
+
+        return buffer
+
+    # =========================
+    # ⬆ SUBIR PDF A SUPABASE
+    # =========================
+    def subir_pdf(self, buffer, factura_id):
+        filename = f"{factura_id}.pdf"
+
+        url = f"{URL_SUPABASE}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
+
+        headers = {
+            "apikey": KEY_SUPABASE,
+            "Authorization": f"Bearer {KEY_SUPABASE}",
+            "Content-Type": "application/pdf"
         }
 
-        r1 = requests.post(
-            f"{SUPABASE_URL}/rest/v1/facturas",
-            headers=headers,
-            json=factura
-        )
+        r = requests.post(url, data=buffer.read(), headers=headers)
 
-        if r1.status_code >= 300:
-            return jsonify({
-                "status": "error",
-                "message": "Error guardando factura",
-                "detalle": r1.text
-            }), 500
+        if r.status_code not in [200, 201]:
+            raise Exception(f"Error subiendo PDF: {r.text}")
 
-        # =========================
-        # 3. PRODUCTOS (MUY IMPORTANTE)
-        # =========================
-        productos = data.get("productos", [])
+        public_url = f"{URL_SUPABASE}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}"
 
-        items = []
-        for p in productos:
-            items.append({
-                "factura_id": factura_id,
-                "nombre": p["nombre"],
-                "cantidad": p["cantidad"],
-                "precio_unitario": p["precioUnitario"],
-                "precio_unitario_bs": p.get("precioUnitarioBS", 0),
-                "precio_total": p["precioTotal"],
-                "precio_total_bs": p.get("precioTotalBS", 0)
-            })
+        return public_url
 
-        if items:
-            r2 = requests.post(
-                f"{SUPABASE_URL}/rest/v1/factura_items",
-                headers=headers,
-                json=items
+    # =========================
+    # POST MAIN
+    # =========================
+    def do_POST(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+
+        try:
+            factura_data = json.loads(post_data.decode('utf-8'))
+
+            # =========================
+            # 1. GUARDAR EN SUPABASE
+            # =========================
+            url_api = f"{URL_SUPABASE}/rest/v1/ventas"
+
+            res_db = requests.post(
+                url_api,
+                json=factura_data,
+                headers=headers_supabase
             )
 
-            if r2.status_code >= 300:
-                return jsonify({
-                    "status": "error",
-                    "message": "Factura guardada pero error en productos",
-                    "detalle": r2.text
-                }), 500
+            if res_db.status_code not in [200, 201]:
+                raise Exception(res_db.text)
 
-        # =========================
-        # 4. RESPUESTA FINAL
-        # =========================
-        return jsonify({
-            "status": "success",
-            "factura_id": factura_id
-        })
+            # =========================
+            # 2. GENERAR PDF
+            # =========================
+            pdf_buffer = self.generar_pdf(factura_data)
 
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+            # =========================
+            # 3. SUBIR PDF
+            # =========================
+            factura_id = factura_data.get("id_factura", str(datetime.now().timestamp()))
 
+            pdf_url = self.subir_pdf(pdf_buffer, factura_id)
 
-if __name__ == "__main__":
-    app.run(debug=True)
+            # =========================
+            # 4. WHATSAPP
+            # =========================
+            telefono = factura_data.get("telefono")
+            nombre = factura_data.get("nombre", "Cliente")
+
+            if URL_PUENTE and telefono and telefono != "N/A":
+
+                mensaje = (
+                    f"👋 Hola *{nombre}*\n\n"
+                    f"🧾 Tu factura está lista:\n"
+                    f"🔗 {pdf_url}\n\n"
+                    f"Gracias por tu compra ✨"
+                )
+
+                requests.post(
+                    f"{URL_PUENTE}/send-message",
+                    json={
+                        "to": telefono,
+                        "message": mensaje
+                    },
+                    timeout=5
+                )
+
+            # =========================
+            # RESPONSE
+            # =========================
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+
+            self.wfile.write(json.dumps({
+                "status": "success",
+                "pdf_url": pdf_url
+            }).encode('utf-8'))
+
+        except Exception as e:
+            self.send_response(400)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+
+            self.wfile.write(json.dumps({
+                "status": "error",
+                "message": str(e)
+            }).encode('utf-8'))
