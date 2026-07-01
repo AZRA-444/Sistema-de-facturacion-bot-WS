@@ -530,6 +530,8 @@ async function finalizarCompra() {
     cedula: document.getElementById("documentID")?.value || "V-00000000",
     telefono: document.getElementById("numberPhone")?.value || "N/A",
 
+    productos: state.listaProductos,
+
     subtotal_usd: state.montoFinalUSD + state.descUSD,
     subtotal_bs: state.montoFinalBS + state.descBS,
     descuento_usd: state.descUSD,
