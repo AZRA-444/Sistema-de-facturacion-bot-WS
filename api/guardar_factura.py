@@ -36,13 +36,13 @@ class handler(BaseHTTPRequestHandler):
                 raise Exception(f"Error de Supabase: {res_db.text}")
             
             # 2. Envío al Puente Local de WhatsApp
-            URL_PUENTE = os.environ.get("URL_PUENTE_WHATSAPP", "")
+            URL_PUENTE = os.environ.get("URL_PUENTE", "")
             telefono_cliente = factura_data.get("telefono")
             nombre_cliente = factura_data.get("nombre", "Cliente")
             id_factura = factura_data.get("id_factura")
             
             if URL_PUENTE and telefono_cliente and telefono_cliente != "N/A":
-                link_factura = f"https://tu-proyecto.vercel.app/factura.html?id={id_factura}"
+                link_factura = f"https://sistema-de-facturacion-bot-ws.vercel.app/factura.html?id={id_factura}"
                 
                 payload_puente = {
                     "to": telefono_cliente,
