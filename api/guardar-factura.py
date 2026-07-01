@@ -99,14 +99,16 @@ class handler(BaseHTTPRequestHandler):
             link_factura = f"{FRONTEND_DOMAIN}/factura.html?id={factura_data['id_factura']}"
 
             # ====================== WHATSAPP ======================
-            telefono = factura_data.get("telefono", "").strip()
+            telefono = str(factura_data.get("telefono", "")).strip()
+            
             if URL_PUENTE and telefono and telefono != "N/A":
                 try:
-                    # Normalizar número
-                    if telefono.startswith("0"):
-                        telefono = "+58" + telefono[1:]
-                    elif not telefono.startswith("+"):
-                        telefono = "+58" + telefono.lstrip("58")
+                    # Dejamos el número limpio de espacios o símbolos. 
+                    # Tu server.js se encargará de poner el '58' de forma perfecta y segura.
+                    telefono_limpio = "".join(filter(str.isdigit, telefono))
+                    
+                    # Evitamos URLs rotas si pones una barra / de más en las variables de entorno
+                    url_final_puente = f"{URL_PUENTE.rstrip('/')}/send-message"
 
                     mensaje = (
                         f"👋 Hola *{factura_data.get('nombre', 'Cliente')}*\n\n"
@@ -116,17 +118,17 @@ class handler(BaseHTTPRequestHandler):
                         f"Gracias por tu compra ✨"
                     )
 
-                    payload = {"to": telefono, "message": mensaje}
+                    payload = {"to": telefono_limpio, "message": mensaje}
 
-                    print(f"📤 Enviando WhatsApp a: {telefono}")
+                    print(f"📤 Enviando WhatsApp a través del puente: {telefono_limpio}")
 
                     response = requests.post(
-                        f"{URL_PUENTE}/send-message",
+                        url_final_puente,
                         json=payload,
                         timeout=10
                     )
 
-                    print(f"📩 Respuesta WhatsApp: {response.status_code} - {response.text[:200]}")
+                    print(f"📩 Respuesta WhatsApp del puente: {response.status_code} - {response.text[:200]}")
 
                 except Exception as e:
                     print(f"❌ Error enviando WhatsApp: {str(e)}")
