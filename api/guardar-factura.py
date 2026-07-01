@@ -79,7 +79,7 @@ class handler(BaseHTTPRequestHandler):
             # ========================================================
             # 2. Envío al Puente Local de WhatsApp (Lógica Intacta)
             # ========================================================
-            URL_PUENTE = os.environ.get("URL_PUENTE_WHATSAPP", "")
+            URL_PUENTE = os.environ.get("URL_PUENTE", "")
             telefono_cliente = factura_data.get("telefono")
             nombre_cliente = factura_data.get("nombre", "Cliente")
             id_factura = factura_data.get("id_factura")
