@@ -522,91 +522,77 @@ async function finalizarCompra() {
   const boton = document.getElementById("btnFinalizarCompra");
   if (!boton) return;
 
-  const selectPago = document.getElementById("metodoPago");
-  const metodoSeleccionado = selectPago ? selectPago.value : "";
-
-  const esEfectivoDolar = metodoSeleccionado === "ED";
-  const esEfectivoBolivar = metodoSeleccionado === "EBS";
-
-  const montoRecibido = esEfectivoDolar
-    ? Number(document.getElementById("EDMontoRecibido")?.value) || 0
-    : esEfectivoBolivar
-      ? Number(document.getElementById("EBSMontoRecibido")?.value) || 0
-      : 0;
-
-  const vueltoEntregado = esEfectivoDolar
-    ? document.getElementById("EDVueltoEntrega")?.value || "0.00"
-    : esEfectivoBolivar
-      ? document.getElementById("EBSVueltoEntrega")?.value || "0.00"
-      : "0.00";
-
-  const vendedorRegistrado =
-    localStorage.getItem("vendedorActual") || "Cajero General";
+  const metodoSeleccionado = document.getElementById("metodoPago")?.value || "OTROS";
 
   const facturaData = {
-    id_factura: "FAC-" + Date.now(),
-    vendedor: vendedorRegistrado,
-    id_cliente: "Cli-" + Date.now(),
-    nombre: document.getElementById("nameClient")?.value || "Consumidor",
-    apellido: document.getElementById("secondNameClient")?.value || "Final",
-    cedula: document.getElementById("documentID")?.value || "V-00000000",
-    telefono: document.getElementById("numberPhone")?.value || "N/A",
-
-    productos: state.listaProductos,
+    id_factura: "FAC-" + Date.now().toString().slice(-8),
+    nombre: document.getElementById("nameClient")?.value.trim() || "Consumidor Final",
+    apellido: document.getElementById("secondNameClient")?.value.trim() || "",
+    cedula: document.getElementById("documentID")?.value.trim() || "V-00000000",
+    telefono: document.getElementById("numberPhone")?.value.trim() || "N/A",
+    vendedor: localStorage.getItem("vendedorActual") || "Cajero General",
 
     subtotal_usd: state.montoFinalUSD + state.descUSD,
-    subtotal_bs: state.montoFinalBS + state.descBS,
     descuento_usd: state.descUSD,
-    descuento_bs: state.descBS,
     total_usd: state.montoFinalUSD,
+
+    subtotal_bs: state.montoFinalBS + state.descBS,
+    descuento_bs: state.descBS,
     total_bs: state.montoFinalBS,
 
     metodo_pago: metodoSeleccionado,
     referencia: document.getElementById("pmRef")?.value || "N/A",
     banco: document.getElementById("bankSelect")?.value || "N/A",
-    monto_recibido: montoRecibido,
-    vuelto_entregado: vueltoEntregado,
-    observaciones:
-      document.getElementById("observacionesED")?.value ||
-      document.getElementById("observacionesEBS")?.value ||
-      document.getElementById("observacionesOTROS")?.value ||
-      "Sin observaciones",
+
+    // Productos con estructura exacta que espera el backend
+    productos: state.listaProductos.map(p => ({
+      nombre: p.nombre,
+      cantidad: p.cantidad,
+      precioUnitario: p.precioUnitario,
+      precioTotal: p.precioTotal
+    }))
   };
 
   boton.disabled = true;
-  boton.classList.add("animating");
-
   mostrarModalCargando();
 
   try {
     const response = await fetch(BACKEND_API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
       body: JSON.stringify(facturaData)
     });
+
+    // === CRÍTICO: Verificar si realmente es JSON ===
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      console.error("Backend devolvió no-JSON:", text);
+      throw new Error("El servidor no devolvió una respuesta JSON válida");
+    }
 
     const resultado = await response.json();
 
     if (!response.ok || resultado.status === "error") {
-      throw new Error(resultado.message || "Error al guardar en el servidor");
+      throw new Error(resultado.message || "Error desconocido del servidor");
     }
 
     mostrarModalExito();
-
     state.compraExitosa = true;
     state.listaProductos = [];
     actualizarTabla();
-    ocultarSeccionPagos();
 
     setTimeout(() => {
       location.reload();
-    }, 2000);
-  } catch (error) {
-    state.compraExitosa = false;
+    }, 1800);
 
+  } catch (error) {
+    console.error("Error en finalizarCompra:", error);
     mostrarModalError(error.message);
   } finally {
-    boton.classList.remove("animating");
     boton.disabled = false;
   }
 }
