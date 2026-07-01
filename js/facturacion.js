@@ -529,7 +529,7 @@ async function finalizarCompra() {
     nombre: document.getElementById("nameClient")?.value.trim() || "Consumidor Final",
     apellido: document.getElementById("secondNameClient")?.value.trim() || "",
     cedula: document.getElementById("documentID")?.value.trim() || "V-00000000",
-    telefono: document.getElementById("numberPhone")?.value.trim() || "N/A",
+    telefono: document.getElementById("numberPhone")?.value.trim().replace(/\D/g, '').replace(/^0/, '+58') || "N/A",
     vendedor: localStorage.getItem("vendedorActual") || "Cajero General",
 
     subtotal_usd: state.montoFinalUSD + state.descUSD,
