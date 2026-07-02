@@ -85,7 +85,7 @@ class handler(BaseHTTPRequestHandler):
             id_factura = factura_data.get("id_factura")
             
             if URL_PUENTE and telefono_cliente and telefono_cliente != "N/A":
-                link_factura = f"{FRONTEND_DOMAIN}/assets/pages/factura.html?id={id_factura}"
+                link_factura = f"{FRONTEND_DOMAIN}/factura.html?id={id_factura}"
                 
                 payload_puente = {
                     "to": telefono_cliente,
