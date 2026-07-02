@@ -1,0 +1,14 @@
+{
+  "cleanUrls": true,
+
+  "rewrites": [
+    {
+      "source": "/factura/:token",
+      "destination": "/factura.html?token=:token"
+    },
+    {
+      "source": "/home",
+      "destination": "/index.html"
+    }
+  ]
+}
