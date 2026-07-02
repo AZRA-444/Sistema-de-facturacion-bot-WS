@@ -1,6 +1,7 @@
 async function cargarFactura() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
+    const id = params.get("id");
 
     // Referencias DOM
     const loading = document.getElementById("loading");
@@ -36,7 +37,7 @@ async function cargarFactura() {
         "https://etfdwjbgrbxfuoltpgqa.supabase.co";
 
     const SUPABASE_ANON_KEY =
-        "TU_KEY_AQUI";
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0ZmR3amJncmJ4ZnVvbHRwZ3FhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3OTg0NDQsImV4cCI6MjA5ODM3NDQ0NH0.Ap4HsuDjA43fKlTA8DP_ljwIn6vnE_pEw1LiMmFngvU";
 
     try {
         const headers = {
@@ -52,7 +53,7 @@ async function cargarFactura() {
                 { headers }
             ),
             fetch(
-                `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${token}&select=*`,
+                `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${id}&select=*`,
                 { headers }
             )
         ]);
