@@ -1,7 +1,6 @@
 async function cargarFactura() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
-    const id = params.get("id");
 
     // Referencias DOM
     const loading = document.getElementById("loading");
@@ -53,7 +52,7 @@ async function cargarFactura() {
                 { headers }
             ),
             fetch(
-                `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${id}&select=*`,
+                `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${token}&select=*`,
                 { headers }
             )
         ]);
