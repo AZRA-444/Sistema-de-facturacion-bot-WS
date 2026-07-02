@@ -46,16 +46,41 @@ async function cargarFactura() {
         };
 
         // Consultar factura y detalles simultáneamente
-        const [resFactura, resDetalles] = await Promise.all([
-            fetch(
-                `${SUPABASE_URL}/rest/v1/facturas?id_factura=eq.${token}&select=*`,
-                { headers }
-            ),
-            fetch(
-                `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${token}&select=*`,
-                { headers }
-            )
-        ]);
+       // =========================
+// 1. CONSULTAR FACTURA POR TOKEN
+// =========================
+
+    const resFactura = await fetch(
+        `${SUPABASE_URL}/rest/v1/facturas?access_token=eq.${token}&select=*`,
+        { headers }
+    );
+    
+    if (!resFactura.ok) {
+        throw new Error("Error consultando la factura");
+    }
+    
+    const facturaData = await resFactura.json();
+    
+    if (!facturaData.length) {
+        throw new Error("Factura no encontrada");
+    }
+    
+    const factura = facturaData[0];
+    
+    // =========================
+    // 2. CONSULTAR DETALLES USANDO ID REAL
+    // =========================
+    
+    const resDetalles = await fetch(
+        `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${factura.id_factura}&select=*`,
+        { headers }
+    );
+    
+    if (!resDetalles.ok) {
+        throw new Error("Error consultando los detalles");
+    }
+    
+    const detalles = await resDetalles.json();
 
         if (!resFactura.ok || !resDetalles.ok) {
             throw new Error("No se pudo consultar la factura");
