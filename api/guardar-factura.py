@@ -111,7 +111,7 @@ class handler(BaseHTTPRequestHandler):
 
             if URL_PUENTE and telefono_cliente and telefono_cliente != "N/A":
 
-                link_factura = f"{FRONTEND_DOMAIN}/assets/pages/factura.html?token={access_token}"
+                link_factura = f"{FRONTEND_DOMAIN}/factura.html?token={access_token}"
 
                 payload_puente = {
                     "to": telefono_cliente,
