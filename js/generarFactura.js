@@ -1,6 +1,6 @@
 async function cargarFactura() {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
+    const id = params.get("id");
 
     // Referencias DOM
     const loading = document.getElementById("loading");
@@ -27,8 +27,8 @@ async function cargarFactura() {
         facturaActions.style.display = "flex";
     }
 
-    if (!token) {
-        mostrarError("No se recibió un token valido.");
+    if (!id) {
+        mostrarError("No se recibió un ID de factura.");
         return;
     }
 
@@ -36,7 +36,7 @@ async function cargarFactura() {
         "https://etfdwjbgrbxfuoltpgqa.supabase.co";
 
     const SUPABASE_ANON_KEY =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0ZmR3amJncmJ4ZnVvbHRwZ3FhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3OTg0NDQsImV4cCI6MjA5ODM3NDQ0NH0.Ap4HsuDjA43fKlTA8DP_ljwIn6vnE_pEw1LiMmFngvU";
+        "TU_KEY_AQUI";
 
     try {
         const headers = {
@@ -46,41 +46,16 @@ async function cargarFactura() {
         };
 
         // Consultar factura y detalles simultáneamente
-       // =========================
-// 1. CONSULTAR FACTURA POR TOKEN
-// =========================
-
-    const resFactura = await fetch(
-        `${SUPABASE_URL}/rest/v1/facturas?access_token=eq.${token}&select=*`,
-        { headers }
-    );
-    
-    if (!resFactura.ok) {
-        throw new Error("Error consultando la factura");
-    }
-    
-    const facturaData = await resFactura.json();
-    
-    if (!facturaData.length) {
-        throw new Error("Factura no encontrada");
-    }
-    
-    const factura = facturaData[0];
-    
-    // =========================
-    // 2. CONSULTAR DETALLES USANDO ID REAL
-    // =========================
-    
-    const resDetalles = await fetch(
-        `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${factura.id_factura}&select=*`,
-        { headers }
-    );
-    
-    if (!resDetalles.ok) {
-        throw new Error("Error consultando los detalles");
-    }
-    
-    const detalles = await resDetalles.json();
+        const [resFactura, resDetalles] = await Promise.all([
+            fetch(
+                `${SUPABASE_URL}/rest/v1/facturas?id_factura=eq.${id}&select=*`,
+                { headers }
+            ),
+            fetch(
+                `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${id}&select=*`,
+                { headers }
+            )
+        ]);
 
         if (!resFactura.ok || !resDetalles.ok) {
             throw new Error("No se pudo consultar la factura");
