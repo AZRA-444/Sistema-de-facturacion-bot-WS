@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../css/factura.css" />
+    <title>Factura Digital</title>
+  </head>
+  <body>
+    <div id="loading" style="text-align: center; margin-top: 100px; font-family: 'Poppins', sans-serif;">
+      <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2rem; margin-bottom: 10px;"></i>
+      <p>Buscando factura...</p>
+    </div>
+
+    <div class="factura-actions" id="factura-actions" style="display: none;">
+      <button class="btn-imprimir" onclick="window.print()">
+        <i class="fa-solid fa-print"></i> Imprimir / Guardar PDF
+      </button>
+    </div>
+
+    <div class="factura" id="factura" style="display: none;">
+      <div class="header">
+        <div class="empresa">
+          <h1>FACTURA</h1>
+          <strong>Nombre de tu Negocio C.A.</strong>
+          RIF: J-00000000-0<br />
+          Dirección del negocio, Ciudad<br />
+          Tel: 0000-0000000
+        </div>
+        <div class="folio">
+          <p id="id_factura"></p>
+          <div><strong>Fecha:</strong> <span id="fecha"></span></div>
+        </div>
+      </div>
+
+      <div class="info">
+        <div><strong>Cliente:</strong> <span id="cliente"></span></div>
+        <div><strong>Cédula:</strong> <span id="cedula"></span></div>
+        <div><strong>Teléfono:</strong> <span id="telefono"></span></div>
+        <div><strong>Vendedor:</strong> <span id="vendedor"></span></div>
+      </div>
+
+      <div class="factura-table-wrap">
+        <table id="tabla_productos">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Cantidad</th>
+              <th>Precio Unit.</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="total">
+        <div>Subtotal USD: <span>$<span id="subtotal_usd"></span></span></div>
+        <div>Descuento USD: <span>$<span id="descuento_usd"></span></span></div>
+        <div><strong>Total USD:</strong> <strong>$<span id="total_usd"></span></strong></div>
+        <div>Total Bs: <span><span id="total_bs"></span> Bs.F</span></div>
+      </div>
+
+      <div class="payment-info">
+        <p><strong>Método de pago:</strong> <span id="metodo_pago"></span></p>
+        <p id="referencia_info"></p>
+      </div>
+
+      <div class="legal-note">
+        Documento generado electrónicamente. Válido como nota de entrega / comprobante de compra.
+      </div>
+    </div>
+
+    <div class="factura-error" id="factura-error" style="display: none;">
+      <i class="fa-solid fa-circle-exclamation"></i>
+      <p id="factura-error-msg"></p>
+    </div>
+
+    <script src="../../js/generarFactura.js"></script>
+  </body>
+</html>
