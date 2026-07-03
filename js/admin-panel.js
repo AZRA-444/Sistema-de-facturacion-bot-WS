@@ -354,41 +354,83 @@ document.getElementById("modal-detalle-close").addEventListener("click", () => {
 });
 
 // ============================================================
-// COMISIONES
+// COMISIONES — Ajustado para Evaluar el Mes Anterior
 // ============================================================
 const COMISION_PORCENTAJE = 0.01;
 
+// Función auxiliar para restar un mes a un string 'YYYY-MM'
+function obtenerMesAnterior(mesString) {
+  const [year, month] = mesString.split("-").map(Number);
+  // Al restar 1 al mes (0-11 en JavaScript), el constructor de Date maneja los cambios de año automáticamente
+  const fecha = new Date(year, month - 2, 1); 
+  const yyyy = fecha.getFullYear();
+  const mm = String(fecha.getMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}`;
+}
+
 async function calcularComisiones() {
-  const mes = document.getElementById("c-mes")?.value;
+  const mesSeleccionado = document.getElementById("c-mes")?.value; // Mes de Pago (Ej: '2026-07')
   const statusEl = document.getElementById("status-comisiones");
-  if (!mes) {
+  
+  if (!mesSeleccionado) {
     if (statusEl) statusEl.textContent = "Selecciona un mes.";
     return;
   }
 
   if (statusEl) {
-    statusEl.textContent = "Calculando…";
+    statusEl.textContent = "Calculando comisiones del mes anterior…";
     statusEl.classList.remove("error");
   }
 
-  const query = `${SUPABASE_URL}/rest/v1/facturas?select=vendedor,total_usd&${COL_FECHA}=gte.${primerDiaDelMes(mes)}&${COL_FECHA}=lt.${primerDiaSiguienteMes(mes)}`;
+  // Calculamos automáticamente el mes en el que se generaron las ventas
+  const mesVentas = obtenerMesAnterior(mesSeleccionado); // (Ej: '2026-06')
+
+  // URL para traer las facturas generadas en el MES ANTERIOR
+  const queryFacturas = `${SUPABASE_URL}/rest/v1/facturas?select=vendedor,total_usd&${COL_FECHA}=gte.${primerDiaDelMes(mesVentas)}&${COL_FECHA}=lt.${primerDiaSiguienteMes(mesVentas)}`;
+  
+  // URL para traer los estados de pago registrados para este MES DE CORTE
+  const queryPagos = `${SUPABASE_URL}/rest/v1/comisiones_pagos?select=vendedor,pagado&mes=eq.${mesSeleccionado}`;
 
   try {
-    const res = await fetch(query, { headers });
-    if (!res.ok) throw new Error("Error " + res.status);
-    const data = await res.json();
-    if (statusEl) statusEl.textContent = `Actualizado ${new Date().toLocaleTimeString("es-VE")}`;
+    const [resFacturas, resPagos] = await Promise.all([
+      fetch(queryFacturas, { headers }),
+      fetch(queryPagos, { headers })
+    ]);
 
+    if (!resFacturas.ok) throw new Error("Error al consultar ventas: " + resFacturas.status);
+    if (!resPagos.ok) throw new Error("Error al consultar pagos: " + resPagos.status);
+
+    const facturasData = await resFacturas.json();
+    const pagosData = await resPagos.json();
+
+    // Mapeo rápido del estado de pago actual
+    const mapaPagos = {};
+    pagosData.forEach(p => {
+      if (p.vendedor) mapaPagos[p.vendedor.trim()] = p.pagado;
+    });
+
+    // Procesamos las ventas del mes anterior
     const porVendedor = {};
-    data.forEach((f) => {
-      const v = f.vendedor || "Sin asignar";
-      if (!porVendedor[v]) porVendedor[v] = { ventas: 0, total: 0 };
+    facturasData.forEach((f) => {
+      const v = f.vendedor ? f.vendedor.trim() : "Sin asignar";
+      if (!porVendedor[v]) {
+        porVendedor[v] = { 
+          ventas: 0, 
+          total: 0,
+          pagado: mapaPagos[v] !== undefined ? mapaPagos[v] : false 
+        };
+      }
       porVendedor[v].ventas += 1;
       porVendedor[v].total += Number(f.total_usd) || 0;
     });
 
-    renderComisiones(porVendedor, mes);
+    if (statusEl) {
+      statusEl.textContent = `Mostrando comisiones acumuladas de [${mesVentas}]. Actualizado a las ${new Date().toLocaleTimeString("es-VE")}`;
+    }
+
+    renderComisiones(porVendedor, mesSeleccionado);
   } catch (err) {
+    console.error(err);
     if (statusEl) {
       statusEl.textContent = "No se pudo calcular: " + err.message;
       statusEl.classList.add("error");
@@ -396,11 +438,7 @@ async function calcularComisiones() {
   }
 }
 
-function pagoKey(vendedor, mes) {
-  return `comision_pagada__${mes}__${vendedor}`;
-}
-
-function renderComisiones(porVendedor, mes) {
+function renderComisiones(porVendedor, mesSeleccionado) {
   const tbody = document.getElementById("tbody-comisiones");
   const empty = document.getElementById("empty-comisiones");
   
@@ -423,18 +461,23 @@ function renderComisiones(porVendedor, mes) {
     .forEach((v) => {
       const comision = porVendedor[v].total * COMISION_PORCENTAJE;
       totalComisiones += comision;
-      const pagada = localStorage.getItem(pagoKey(v, mes)) === "1";
-      if (!pagada) pendiente += comision;
+      
+      const isPagada = porVendedor[v].pagado;
+      if (!isPagada) pendiente += comision;
 
       const tr = document.createElement("tr");
-      // Corrección de los argumentos de togglePago eliminando strings complejos dentro del string de ejecución inline
       tr.innerHTML = `
-      <td>${v}</td>
-      <td class="num">${porVendedor[v].ventas}</td>
-      <td class="num">${fmtUSD(porVendedor[v].total)}</td>
-      <td class="num">${fmtUSD(comision)}</td>
-      <td><span class="tag ${pagada ? "" : "pend"}">${pagada ? "Pagada" : "Pendiente"}</span></td>
-      <td><button class="btn small ${pagada ? "ghost" : ""}" onclick="togglePago('${v.replace(/'/g, "\\'")}', '${mes}')">${pagada ? "Marcar pendiente" : "Marcar pagada"}</button></td>`;
+        <td>${v}</td>
+        <td class="num">${porVendedor[v].ventas}</td>
+        <td class="num">${fmtUSD(porVendedor[v].total)}</td>
+        <td class="num">${fmtUSD(comision)}</td>
+        <td><span class="tag ${isPagada ? "" : "pend"}">${isPagada ? "Pagada" : "Pendiente"}</span></td>
+        <td>
+          <button class="btn small ${isPagada ? "ghost" : ""}" 
+                  onclick="togglePago('${v.replace(/'/g, "\\'")}', '${mesSeleccionado}', ${isPagada})">
+            ${isPagada ? "Marcar pendiente" : "Marcar pagada"}
+          </button>
+        </td>`;
       if (tbody) tbody.appendChild(tr);
     });
 
@@ -443,14 +486,42 @@ function renderComisiones(porVendedor, mes) {
   if (document.getElementById("kpi-com-pend")) document.getElementById("kpi-com-pend").textContent = fmtUSD(pendiente);
 }
 
-async function togglePago(vendedor, mes) {
-  const key = pagoKey(vendedor, mes);
-  const actual = localStorage.getItem(key) === "1";
-  if (actual) localStorage.removeItem(key);
-  else localStorage.setItem(key, "1");
-  await calcularComisiones();
-}
+async function togglePago(vendedor, mesSeleccionado, estadoActual) {
+  const statusEl = document.getElementById("status-comisiones");
+  if (statusEl) statusEl.textContent = "Actualizando registro en Supabase…";
 
+  const nuevoEstado = !estadoActual;
+  const fechaPago = nuevoEstado ? new Date().toISOString() : null;
+
+  const payload = {
+    vendedor: vendedor,
+    mes: mesSeleccionado, // Se asocia permanentemente al mes de ejecución del pago
+    pagado: nuevoEstado,
+    fecha_pago: fechaPago
+  };
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/comisiones_pagos`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error("Error en Supabase: " + res.status);
+
+    await calcularComisiones();
+  } catch (err) {
+    console.error(err);
+    if (statusEl) {
+      statusEl.textContent = "Error al cambiar estado: " + err.message;
+      statusEl.classList.add("error");
+    }
+  }
+}
 // ============================================================
 // EVENTOS Y ARRANQUE
 // ============================================================
