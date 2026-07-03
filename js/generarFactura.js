@@ -152,8 +152,8 @@ async function cargarFactura() {
                 const tr = document.createElement("tr");
 
                 tr.innerHTML = `
-                    <td>${producto.nombre_producto || "-"}</td>
                     <td>${producto.cantidad || 0}</td>
+                    <td>${producto.nombre_producto || "-"}</td>
                     <td>$${Number(producto.precio_unitario || 0).toFixed(2)}</td>
                     <td>$${Number(producto.precio_total || 0).toFixed(2)}</td>
                 `;
