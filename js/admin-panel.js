@@ -316,6 +316,9 @@ async function verDetalle(idFactura) {
       </div>`;
   }
 }
+document.getElementById("modal-detalle-close").addEventListener("click", () => {
+  document.getElementById("modal-detalle").classList.remove("active");
+});
 
 // ============================================================
 // MODAL DESCUENTOS
