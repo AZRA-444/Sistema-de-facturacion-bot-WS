@@ -198,19 +198,19 @@ let chartVendedores = null;
 let chartMetodos = null;
 
 function renderCharts(facturas) {
-  console.log("📊 renderCharts se ejecutó. Facturas recibientes:", facturas);
+  console.log("📊 renderCharts se ejecutó. Facturas recibidas:", facturas);
 
   const canvasDias = document.getElementById("chart-dias");
   const canvasVendedores = document.getElementById("chart-vendedores");
   const canvasMetodos = document.getElementById("chart-metodos");
 
-  console.log("Elementos Canvas encontrados:", { canvasDias, canvasVendedores, canvasMetodos });
-
-  const ChartLib = window.Chart;
+  const ChartLib = window.Chart || Chart; 
   if (!ChartLib) {
     console.error("❌ ERROR CRÍTICO: Chart.js no se cargó correctamente en el JS global.");
     return;
   }
+  
+  // ... (el resto del código de renderCharts que ya pusimos con los logs de diagnóstico)
 
   // Forzar visualización física de los contenedores
   [canvasDias, canvasVendedores, canvasMetodos].forEach(canvas => {
