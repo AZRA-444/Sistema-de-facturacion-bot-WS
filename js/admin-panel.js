@@ -162,7 +162,6 @@ function renderVentas(facturas) {
         <td class="num">${fmtBS(f.total_bs)}</td>
         <td>
           <button class="btn small ghost" onclick="verDetalle('${f.id_factura}')">Ver</button>
-          <button class="btn small" onclick="abrirDescuento('${f.id_factura}', ${subtotal}, ${Number(f.descuento_usd) || 0}, ${Number(f.subtotal_bs) || f.total_bs || 0}, ${Number(f.descuento_bs) || 0})">Descuento</button>
         </td>`;
       if (tbody) tbody.appendChild(tr);
     });
