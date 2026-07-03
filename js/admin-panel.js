@@ -279,15 +279,25 @@ async function verDetalle(idFactura) {
 
   let productosHtml = "<p>No se pudieron cargar los productos.</p>";
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${idFactura}&select=*`, { headers });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${idFactura}&select=nombre_producto,cantidad,precio_total`, { headers });
     if (res.ok) {
       const productos = await res.json();
+      
       productosHtml = productos.length
-        ? productos.map((p) => `<div class="row"><span>${p.cantidad} × ${p.nombre}</span><span class="num">${fmtUSD(p.precioTotal)}</span></div>`).join("")
-        : "<p>Sin productos registrados.</p>";
+        ? productos.map((p) => {
+              const nombre = p.nombre_producto || "Producto sin nombre";
+              const cant = p.cantidad || 0;
+              const total = p.precio_total || 0;
+
+              return `<div class="row">
+                <span>${cant} × ${nombre}</span>
+                <span class="num">${fmtUSD(total)}</span>
+              </div>`;
+            }).join("")
+        : "<p>Sin productos registrados en esta factura.</p>";
     }
   } catch (e) {
-    // Falla controlada
+    console.error("Error al cargar los detalles:", e);
   }
 
   if (body) {
@@ -306,9 +316,6 @@ async function verDetalle(idFactura) {
       </div>`;
   }
 }
-document.getElementById("modal-detalle-close")?.addEventListener("click", () => {
-  document.getElementById("modal-detalle")?.classList.remove("active");
-});
 
 // ============================================================
 // MODAL DESCUENTOS
