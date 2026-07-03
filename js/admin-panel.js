@@ -87,6 +87,15 @@ function primerDiaSiguienteMes(mesStr) {
   return next + "-01T00:00:00";
 }
 
+// Función auxiliar para restar un mes a un string 'YYYY-MM'
+function obtenerMesAnterior(mesString) {
+  const [year, month] = mesString.split("-").map(Number);
+  const fecha = new Date(year, month - 2, 1); 
+  const yyyy = fecha.getFullYear();
+  const mm = String(fecha.getMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}`;
+}
+
 async function buscarFacturas() {
   const mes = document.getElementById("f-mes")?.value;
   const dia = document.getElementById("f-dia")?.value;
@@ -105,7 +114,6 @@ async function buscarFacturas() {
 
   if (dia) {
     const start = dia + "T00:00:00";
-    // Reparación de rango de fecha nativo para evitar desfases UTC locales
     const d = new Date(dia + "T00:00:00");
     d.setDate(d.getDate() + 1);
     const end = d.toISOString().slice(0, 19);
@@ -209,10 +217,7 @@ function renderCharts(facturas) {
     console.error("❌ ERROR CRÍTICO: Chart.js no se cargó correctamente en el JS global.");
     return;
   }
-  
-  // ... (el resto del código de renderCharts que ya pusimos con los logs de diagnóstico)
 
-  // Forzar visualización física de los contenedores
   [canvasDias, canvasVendedores, canvasMetodos].forEach(canvas => {
     if (canvas && canvas.parentElement) {
       canvas.parentElement.style.position = "relative";
@@ -226,9 +231,7 @@ function renderCharts(facturas) {
   const porVendedor = {};
   const porMetodo = {};
 
-  facturas.forEach((f, index) => {
-    // Si COL_FECHA no está definida globalmente, causará un error aquí. 
-    // Usamos f.fecha o f.created_at de manera segura.
+  facturas.forEach((f) => {
     const rawFecha = f.fecha || f.created_at;
     const fecha = rawFecha ? rawFecha.slice(0, 10) : "S/F";
     
@@ -250,7 +253,6 @@ function renderCharts(facturas) {
   const primaryColor = "#3b82f6";
   const palette = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
-  // 1. Gráfica de Ventas por Día
   if (canvasDias) {
     if (chartDias) chartDias.destroy();
     chartDias = new ChartLib(canvasDias, {
@@ -263,7 +265,6 @@ function renderCharts(facturas) {
     });
   }
 
-  // 2. Gráfica de Ventas por Vendedor
   if (canvasVendedores) {
     if (chartVendedores) chartVendedores.destroy();
     chartVendedores = new ChartLib(canvasVendedores, {
@@ -276,7 +277,6 @@ function renderCharts(facturas) {
     });
   }
 
-  // 3. Gráfica de Métodos de Pago
   if (canvasMetodos) {
     if (chartMetodos) chartMetodos.destroy();
     chartMetodos = new ChartLib(canvasMetodos, {
@@ -349,27 +349,17 @@ async function verDetalle(idFactura) {
       </div>`;
   }
 }
-document.getElementById("modal-detalle-close").addEventListener("click", () => {
+document.getElementById("modal-detalle-close")?.addEventListener("click", () => {
   document.getElementById("modal-detalle").classList.remove("active");
 });
 
 // ============================================================
-// COMISIONES — Ajustado para Evaluar el Mes Anterior
+// COMISIONES — Sincronizado con Supabase y Ajustado a Mes Anterior
 // ============================================================
 const COMISION_PORCENTAJE = 0.01;
 
-// Función auxiliar para restar un mes a un string 'YYYY-MM'
-function obtenerMesAnterior(mesString) {
-  const [year, month] = mesString.split("-").map(Number);
-  // Al restar 1 al mes (0-11 en JavaScript), el constructor de Date maneja los cambios de año automáticamente
-  const fecha = new Date(year, month - 2, 1); 
-  const yyyy = fecha.getFullYear();
-  const mm = String(fecha.getMonth() + 1).padStart(2, "0");
-  return `${yyyy}-${mm}`;
-}
-
 async function calcularComisiones() {
-  const mesSeleccionado = document.getElementById("c-mes")?.value; // Mes de Pago (Ej: '2026-07')
+  const mesSeleccionado = document.getElementById("c-mes")?.value; 
   const statusEl = document.getElementById("status-comisiones");
   
   if (!mesSeleccionado) {
@@ -382,13 +372,9 @@ async function calcularComisiones() {
     statusEl.classList.remove("error");
   }
 
-  // Calculamos automáticamente el mes en el que se generaron las ventas
-  const mesVentas = obtenerMesAnterior(mesSeleccionado); // (Ej: '2026-06')
+  const mesVentas = obtenerMesAnterior(mesSeleccionado);
 
-  // URL para traer las facturas generadas en el MES ANTERIOR
   const queryFacturas = `${SUPABASE_URL}/rest/v1/facturas?select=vendedor,total_usd&${COL_FECHA}=gte.${primerDiaDelMes(mesVentas)}&${COL_FECHA}=lt.${primerDiaSiguienteMes(mesVentas)}`;
-  
-  // URL para traer los estados de pago registrados para este MES DE CORTE
   const queryPagos = `${SUPABASE_URL}/rest/v1/comisiones_pagos?select=vendedor,pagado&mes=eq.${mesSeleccionado}`;
 
   try {
@@ -397,19 +383,17 @@ async function calcularComisiones() {
       fetch(queryPagos, { headers })
     ]);
 
-    if (!resFacturas.ok) throw new Error("Error al consultar ventas: " + resFacturas.status);
-    if (!resPagos.ok) throw new Error("Error al consultar pagos: " + resPagos.status);
+    if (!resFacturas.ok) throw new Error("Error en ventas: " + resFacturas.status);
+    if (!resPagos.ok) throw new Error("Error en pagos: " + resPagos.status);
 
     const facturasData = await resFacturas.json();
     const pagosData = await resPagos.json();
 
-    // Mapeo rápido del estado de pago actual
     const mapaPagos = {};
     pagosData.forEach(p => {
       if (p.vendedor) mapaPagos[p.vendedor.trim()] = p.pagado;
     });
 
-    // Procesamos las ventas del mes anterior
     const porVendedor = {};
     facturasData.forEach((f) => {
       const v = f.vendedor ? f.vendedor.trim() : "Sin asignar";
@@ -474,7 +458,7 @@ function renderComisiones(porVendedor, mesSeleccionado) {
         <td><span class="tag ${isPagada ? "" : "pend"}">${isPagada ? "Pagada" : "Pendiente"}</span></td>
         <td>
           <button class="btn small ${isPagada ? "ghost" : ""}" 
-                  onclick="togglePago('${v.replace(/'/g, "\\'")}', '${mesSeleccionado}', ${isPagada})">
+                  onclick="togglePago('${v.replace(/'/g, "\\'")}', '${mesSeleccionado}', ${isPagada}, ${comision})">
             ${isPagada ? "Marcar pendiente" : "Marcar pagada"}
           </button>
         </td>`;
@@ -486,18 +470,20 @@ function renderComisiones(porVendedor, mesSeleccionado) {
   if (document.getElementById("kpi-com-pend")) document.getElementById("kpi-com-pend").textContent = fmtUSD(pendiente);
 }
 
-async function togglePago(vendedor, mesSeleccionado, estadoActual) {
+async function togglePago(vendedor, mesSeleccionado, estadoActual, montoCalculado) {
   const statusEl = document.getElementById("status-comisiones");
   if (statusEl) statusEl.textContent = "Actualizando registro en Supabase…";
 
   const nuevoEstado = !estadoActual;
   const fechaPago = nuevoEstado ? new Date().toISOString() : null;
+  const montoFinal = nuevoEstado ? Number(montoCalculado).toFixed(2) : 0.00;
 
   const payload = {
     vendedor: vendedor,
-    mes: mesSeleccionado, // Se asocia permanentemente al mes de ejecución del pago
+    mes: mesSeleccionado,
     pagado: nuevoEstado,
-    fecha_pago: fechaPago
+    fecha_pago: fechaPago,
+    monto_pagado: Number(montoFinal)
   };
 
   try {
@@ -505,7 +491,6 @@ async function togglePago(vendedor, mesSeleccionado, estadoActual) {
       method: "POST",
       headers: {
         ...headers,
-        "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates"
       },
       body: JSON.stringify(payload)
@@ -522,6 +507,7 @@ async function togglePago(vendedor, mesSeleccionado, estadoActual) {
     }
   }
 }
+
 // ============================================================
 // EVENTOS Y ARRANQUE
 // ============================================================
