@@ -191,74 +191,138 @@ function renderKPIs(facturas) {
 }
 
 // ============================================================
-// GRÁFICAS (Chart.js Seguro)
+// GRÁFICAS — Adaptadas para Chart.js
 // ============================================================
-let chartDias, chartVendedores, chartMetodos;
+let chartDias = null;
+let chartVendedores = null;
+let chartMetodos = null;
 
 function renderCharts(facturas) {
   const canvasDias = document.getElementById("chart-dias");
   const canvasVendedores = document.getElementById("chart-vendedores");
   const canvasMetodos = document.getElementById("chart-metodos");
 
-  if (typeof Chart === "undefined") return;
+  // Validar existencia de Chart.js v4
+  const ChartLib = window.Chart;
+  if (!ChartLib) {
+    console.error("Chart.js no está disponible en el ámbito global.");
+    return;
+  }
+
+  // Asegurar altura mínima a los contenedores padres para evitar el colapso a 0px
+  [canvasDias, canvasVendedores, canvasMetodos].forEach(canvas => {
+    if (canvas && canvas.parentElement) {
+      canvas.parentElement.style.position = "relative";
+      canvas.parentElement.style.height = "240px"; // Altura ideal para encajar en el grid
+      canvas.parentElement.style.width = "100%";
+    }
+  });
 
   const porDia = {};
   const porVendedor = {};
   const porMetodo = {};
 
+  // Procesamiento seguro de datos de Supabase
   facturas.forEach((f) => {
-    const fecha = f[COL_FECHA] ? f[COL_FECHA].slice(0, 10) : "s/f";
+    // Detectar campo de fecha según estructura real de tu tabla
+    const rawFecha = f.fecha || f.created_at;
+    const fecha = rawFecha ? rawFecha.slice(0, 10) : "S/F";
     porDia[fecha] = (porDia[fecha] || 0) + (Number(f.total_usd) || 0);
 
-    const v = f.vendedor || "Sin asignar";
+    const v = f.vendedor ? f.vendedor.trim() : "Sin asignar";
     porVendedor[v] = (porVendedor[v] || 0) + (Number(f.total_usd) || 0);
 
-    const m = f.metodo_pago || "Otro";
+    const m = f.metodo_pago || f.metodo || "Otro";
     porMetodo[m] = (porMetodo[m] || 0) + 1;
   });
 
   const diasLabels = Object.keys(porDia).sort();
-  const paletteLine = "#0f6e63";
-  const paletteBars = ["#0f6e63", "#c8781f", "#a8352a", "#3f5b6b", "#7a8c5c", "#8a6d3b"];
+  const vendLabels = Object.keys(porVendedor).sort((a, b) => porVendedor[b] - porVendedor[a]).slice(0, 5);
+  const metLabels = Object.keys(porMetodo);
 
+  // Paleta de colores estilizada (Compatibles con fondos oscuros)
+  const primaryColor = "#3b82f6"; // Azul neón para destacar
+  const palette = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false }
+    }
+  };
+
+  // 1. Gráfica de Ventas por Día
   if (canvasDias) {
     if (chartDias) chartDias.destroy();
-    chartDias = new Chart(canvasDias, {
+    chartDias = new ChartLib(canvasDias, {
       type: "bar",
       data: {
         labels: diasLabels,
-        datasets: [{ label: "USD", data: diasLabels.map((d) => porDia[d]), backgroundColor: paletteLine }],
+        datasets: [{
+          data: diasLabels.map(d => porDia[d]),
+          backgroundColor: primaryColor,
+          borderRadius: 4
+        }]
       },
-      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+      options: {
+        ...commonOptions,
+        scales: {
+          y: { beginAtZero: true, grid: { color: "rgba(255, 255, 255, 0.08)" }, ticks: { color: "#9ca3af" } },
+          x: { grid: { display: false }, ticks: { color: "#9ca3af" } }
+        }
+      }
     });
   }
 
+  // 2. Gráfica de Ventas por Vendedor
   if (canvasVendedores) {
-    const vendLabels = Object.keys(porVendedor).sort((a, b) => porVendedor[b] - porVendedor[a]).slice(0, 8);
     if (chartVendedores) chartVendedores.destroy();
-    chartVendedores = new Chart(canvasVendedores, {
+    chartVendedores = new ChartLib(canvasVendedores, {
       type: "bar",
       data: {
         labels: vendLabels,
-        datasets: [{ label: "USD", data: vendLabels.map((v) => porVendedor[v]), backgroundColor: paletteBars }],
+        datasets: [{
+          data: vendLabels.map(v => porVendedor[v]),
+          backgroundColor: palette,
+          borderRadius: 4
+        }]
       },
-      options: { indexAxis: "y", responsive: true, plugins: { legend: { display: false } } },
+      options: {
+        ...commonOptions,
+        indexAxis: "y",
+        scales: {
+          x: { beginAtZero: true, grid: { color: "rgba(255, 255, 255, 0.08)" }, ticks: { color: "#9ca3af" } },
+          y: { grid: { display: false }, ticks: { color: "#9ca3af" } }
+        }
+      }
     });
   }
 
+  // 3. Gráfica de Métodos de Pago
   if (canvasMetodos) {
-    const metLabels = Object.keys(porMetodo);
     if (chartMetodos) chartMetodos.destroy();
-    chartMetodos = new Chart(canvasMetodos, {
+    chartMetodos = new ChartLib(canvasMetodos, {
       type: "doughnut",
       data: {
         labels: metLabels,
-        datasets: [{ data: metLabels.map((m) => porMetodo[m]), backgroundColor: paletteBars }],
+        datasets: [{
+          data: metLabels.map(m => porMetodo[m]),
+          backgroundColor: palette,
+          borderWidth: 0
+        }]
       },
       options: {
         responsive: true,
-        plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } },
-      },
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: "bottom",
+            labels: { color: "#ffffff", font: { size: 11 }, padding: 10, boxWidth: 10 }
+          }
+        }
+      }
     });
   }
 }
