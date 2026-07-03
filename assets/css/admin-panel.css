@@ -331,10 +331,12 @@ select option {
     background: var(--glass-bg);
     box-shadow: var(--shadow);
     margin-bottom: 32px;
+    /* Suaviza el scroll en dispositivos táctiles */
+    -webkit-overflow-scrolling: touch; 
 }
 
 .table-wrap::-webkit-scrollbar {
-    height: 6px;
+    height: 8px; /* Un poco más grueso para que sea fácil de arrastrar */
 }
 
 .table-wrap::-webkit-scrollbar-thumb {
@@ -342,14 +344,19 @@ select option {
     border-radius: 20px;
 }
 
+.table-wrap::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, .25);
+}
+
 table {
     width: 100%;
-    min-width: 950px;
+    min-width: 900px; /* Un ancho mínimo balanceado */
     border-collapse: collapse;
+    table-layout: auto; /* Permite que las columnas se adapten orgánicamente al contenido */
 }
 
 thead {
-    background: rgba(255, 255, 255, .02);
+    background: rgba(255, 255, 255, .03);
 }
 
 thead th {
@@ -357,11 +364,14 @@ thead th {
     font-size: .80rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: .5px;
+    letter-spacing: .7px;
     color: var(--accent);
-    border-bottom: 1px solid var(--glass-border);
-    padding: 14px 16px;
-    white-space: nowrap;
+    border-bottom: 2px solid var(--glass-border); /* Línea divisoria más clara */
+    padding: 16px 20px; /* Más aire vertical y horizontal */
+    
+    /* Evita que los títulos se corten o hagan saltos de línea extraños */
+    white-space: nowrap; 
+    word-wrap: normal;
 }
 
 tbody tr {
@@ -370,29 +380,56 @@ tbody tr {
 }
 
 tbody tr:hover {
-    background: rgba(255, 255, 255, .01);
+    background: rgba(255, 255, 255, .02); /* Mayor contraste al hacer hover */
 }
 
 tbody td {
-    padding: 14px 16px;
+    padding: 16px 20px; /* Consistencia de espaciado con el thead */
     color: #e5e7eb;
     vertical-align: middle;
     font-size: 0.9rem;
+    line-height: 1.4; /* Mejora la lectura si el texto llega a envolverse */
+    
+    /* Evita que datos clave (como fechas o nombres cortos) se rompan en dos líneas */
+    white-space: nowrap; 
 }
 
+/* Permitir que columnas con descripciones largas o textos amplios sí se envuelvan */
+tbody td.text-wrap, 
+thead th.text-wrap {
+    white-space: normal;
+    min-width: 200px; /* Asegura que no se aplaste la columna */
+}
+
+/* Alineaciones específicas para mantener la armonía visual */
 .num {
     font-variant-numeric: tabular-nums;
     text-align: right;
 }
 
+thead th.num {
+    text-align: right; /* Alinea el título numérico con sus datos */
+}
+
+.text-center {
+    text-align: center;
+}
+
+thead th.text-center {
+    text-align: center;
+}
+
 .tag {
-    display: inline-block;
+    display: inline-flex; /* Cambiado a inline-flex para centrar mejor el texto */
+    align-items: center;
+    justify-content: center;
     font-size: 0.75rem;
     font-weight: 600;
-    padding: 4px 10px;
+    padding: 4px 12px;
     border-radius: 20px;
     background: var(--accent-soft);
     color: var(--accent);
+    white-space: nowrap;
 }
 
 .tag.pend {
@@ -401,10 +438,10 @@ tbody td {
 }
 
 .empty-state {
-    padding: 40px 20px;
+    padding: 60px 20px; /* Más espacio para destacar que está vacío */
     text-align: center;
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 0.95rem;
 }
 
 /* ================= MODALES NATIVOS ADAPTADOS ================= */
