@@ -191,30 +191,34 @@ function renderKPIs(facturas) {
 }
 
 // ============================================================
-// GRÁFICAS — Adaptadas para Chart.js
+// DIAGNÓSTICO EN CONSOLA PARA LAS GRÁFICAS
 // ============================================================
 let chartDias = null;
 let chartVendedores = null;
 let chartMetodos = null;
 
 function renderCharts(facturas) {
+  console.log("📊 renderCharts se ejecutó. Facturas recibientes:", facturas);
+
   const canvasDias = document.getElementById("chart-dias");
   const canvasVendedores = document.getElementById("chart-vendedores");
   const canvasMetodos = document.getElementById("chart-metodos");
 
-  // Validar existencia de Chart.js v4
+  console.log("Elementos Canvas encontrados:", { canvasDias, canvasVendedores, canvasMetodos });
+
   const ChartLib = window.Chart;
   if (!ChartLib) {
-    console.error("Chart.js no está disponible en el ámbito global.");
+    console.error("❌ ERROR CRÍTICO: Chart.js no se cargó correctamente en el JS global.");
     return;
   }
 
-  // Asegurar altura mínima a los contenedores padres para evitar el colapso a 0px
+  // Forzar visualización física de los contenedores
   [canvasDias, canvasVendedores, canvasMetodos].forEach(canvas => {
     if (canvas && canvas.parentElement) {
       canvas.parentElement.style.position = "relative";
-      canvas.parentElement.style.height = "240px"; // Altura ideal para encajar en el grid
+      canvas.parentElement.style.height = "240px";
       canvas.parentElement.style.width = "100%";
+      canvas.parentElement.style.display = "block"; 
     }
   });
 
@@ -222,35 +226,29 @@ function renderCharts(facturas) {
   const porVendedor = {};
   const porMetodo = {};
 
-  // Procesamiento seguro de datos de Supabase
-  facturas.forEach((f) => {
-    // Detectar campo de fecha según estructura real de tu tabla
+  facturas.forEach((f, index) => {
+    // Si COL_FECHA no está definida globalmente, causará un error aquí. 
+    // Usamos f.fecha o f.created_at de manera segura.
     const rawFecha = f.fecha || f.created_at;
     const fecha = rawFecha ? rawFecha.slice(0, 10) : "S/F";
+    
     porDia[fecha] = (porDia[fecha] || 0) + (Number(f.total_usd) || 0);
 
     const v = f.vendedor ? f.vendedor.trim() : "Sin asignar";
     porVendedor[v] = (porVendedor[v] || 0) + (Number(f.total_usd) || 0);
 
-    const m = f.metodo_pago || f.metodo || "Otro";
+    const m = f.metodo_pago || "Otro";
     porMetodo[m] = (porMetodo[m] || 0) + 1;
   });
+
+  console.log("Datos procesados listos para graficar:", { porDia, porVendedor, porMetodo });
 
   const diasLabels = Object.keys(porDia).sort();
   const vendLabels = Object.keys(porVendedor).sort((a, b) => porVendedor[b] - porVendedor[a]).slice(0, 5);
   const metLabels = Object.keys(porMetodo);
 
-  // Paleta de colores estilizada (Compatibles con fondos oscuros)
-  const primaryColor = "#3b82f6"; // Azul neón para destacar
+  const primaryColor = "#3b82f6";
   const palette = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
-
-  const commonOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false }
-    }
-  };
 
   // 1. Gráfica de Ventas por Día
   if (canvasDias) {
@@ -259,19 +257,9 @@ function renderCharts(facturas) {
       type: "bar",
       data: {
         labels: diasLabels,
-        datasets: [{
-          data: diasLabels.map(d => porDia[d]),
-          backgroundColor: primaryColor,
-          borderRadius: 4
-        }]
+        datasets: [{ data: diasLabels.map(d => porDia[d]), backgroundColor: primaryColor, borderRadius: 4 }]
       },
-      options: {
-        ...commonOptions,
-        scales: {
-          y: { beginAtZero: true, grid: { color: "rgba(255, 255, 255, 0.08)" }, ticks: { color: "#9ca3af" } },
-          x: { grid: { display: false }, ticks: { color: "#9ca3af" } }
-        }
-      }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
   }
 
@@ -282,20 +270,9 @@ function renderCharts(facturas) {
       type: "bar",
       data: {
         labels: vendLabels,
-        datasets: [{
-          data: vendLabels.map(v => porVendedor[v]),
-          backgroundColor: palette,
-          borderRadius: 4
-        }]
+        datasets: [{ data: vendLabels.map(v => porVendedor[v]), backgroundColor: palette, borderRadius: 4 }]
       },
-      options: {
-        ...commonOptions,
-        indexAxis: "y",
-        scales: {
-          x: { beginAtZero: true, grid: { color: "rgba(255, 255, 255, 0.08)" }, ticks: { color: "#9ca3af" } },
-          y: { grid: { display: false }, ticks: { color: "#9ca3af" } }
-        }
-      }
+      options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
   }
 
@@ -306,25 +283,18 @@ function renderCharts(facturas) {
       type: "doughnut",
       data: {
         labels: metLabels,
-        datasets: [{
-          data: metLabels.map(m => porMetodo[m]),
-          backgroundColor: palette,
-          borderWidth: 0
-        }]
+        datasets: [{ data: metLabels.map(m => porMetodo[m]), backgroundColor: palette, borderWidth: 0 }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: "bottom",
-            labels: { color: "#ffffff", font: { size: 11 }, padding: 10, boxWidth: 10 }
-          }
+          legend: { display: true, position: "bottom", labels: { color: "#ffffff", font: { size: 11 } } }
         }
       }
     });
   }
+  console.log("✅ Gráficas instanciadas correctamente sin caídas.");
 }
 
 // ============================================================
