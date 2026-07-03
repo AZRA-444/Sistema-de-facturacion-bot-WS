@@ -321,55 +321,6 @@ document.getElementById("modal-detalle-close").addEventListener("click", () => {
 });
 
 // ============================================================
-// MODAL DESCUENTOS
-// ============================================================
-let descuentoCtx = {};
-function abrirDescuento(idFactura, subtotalUSD, descActualUSD, subtotalBS, descActualBS) {
-  descuentoCtx = { idFactura, subtotalUSD, subtotalBS };
-  
-  const subtotalInput = document.getElementById("desc-subtotal");
-  const nuevoInput = document.getElementById("desc-nuevo");
-  const nuevoBsInput = document.getElementById("desc-nuevo-bs");
-  const modal = document.getElementById("modal-descuento");
-
-  if (subtotalInput) subtotalInput.value = fmtUSD(subtotalUSD);
-  if (nuevoInput) nuevoInput.value = descActualUSD.toFixed(2);
-  if (nuevoBsInput) nuevoBsInput.value = descActualBS.toFixed(2);
-  if (modal) modal.classList.add("active");
-}
-
-document.getElementById("modal-descuento-close")?.addEventListener("click", () => {
-  document.getElementById("modal-descuento")?.classList.remove("active");
-});
-document.getElementById("desc-cancelar")?.addEventListener("click", () => {
-  document.getElementById("modal-descuento")?.classList.remove("active");
-});
-document.getElementById("desc-guardar")?.addEventListener("click", async () => {
-  const nuevoDescUSD = Number(document.getElementById("desc-nuevo")?.value) || 0;
-  const nuevoDescBS = Number(document.getElementById("desc-nuevo-bs")?.value) || 0;
-  const nuevoTotalUSD = Math.max(descuentoCtx.subtotalUSD - nuevoDescUSD, 0);
-  const nuevoTotalBS = Math.max((descuentoCtx.subtotalBS || 0) - nuevoDescBS, 0);
-
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/facturas?id_factura=eq.${descuentoCtx.idFactura}`, {
-      method: "PATCH",
-      headers: { ...headers, Prefer: "return=representation" },
-      body: JSON.stringify({
-        descuento_usd: nuevoDescUSD,
-        total_usd: nuevoTotalUSD,
-        descuento_bs: nuevoDescBS,
-        total_bs: nuevoTotalBS,
-      }),
-    });
-    if (!res.ok) throw new Error("Error " + res.status);
-    document.getElementById("modal-descuento")?.classList.remove("active");
-    await buscarFacturas();
-  } catch (err) {
-    alert("No se pudo actualizar el descuento: " + err.message);
-  }
-});
-
-// ============================================================
 // COMISIONES
 // ============================================================
 const COMISION_PORCENTAJE = 0.01;
