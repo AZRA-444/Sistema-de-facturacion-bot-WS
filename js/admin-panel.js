@@ -6,6 +6,7 @@ const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0ZmR3amJncmJ4ZnVvbHRwZ3FhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3OTg0NDQsImV4cCI6MjA5ODM3NDQ0NH0.Ap4HsuDjA43fKlTA8DP_ljwIn6vnE_pEw1LiMmFngvU";
 
 const COL_FECHA = "created_at";
+const COMISION_PORCENTAJE_DEFAULT = 0.01; // se usa solo si el vendedor no tiene fila en comisiones_config
 
 const headers = {
   apikey: SUPABASE_ANON_KEY,
@@ -43,6 +44,17 @@ function fmtFecha(iso) {
     " " +
     d.toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" })
   );
+}
+// Evita que nombres/vendedores/etc. con caracteres especiales (<, >, ", ', &)
+// rompan el HTML de las tablas o los atributos data-*.
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[c]));
 }
 
 // ============================================================
@@ -90,7 +102,7 @@ function primerDiaSiguienteMes(mesStr) {
 // Función auxiliar para restar un mes a un string 'YYYY-MM'
 function obtenerMesAnterior(mesString) {
   const [year, month] = mesString.split("-").map(Number);
-  const fecha = new Date(year, month - 2, 1); 
+  const fecha = new Date(year, month - 2, 1);
   const yyyy = fecha.getFullYear();
   const mm = String(fecha.getMonth() + 1).padStart(2, "0");
   return `${yyyy}-${mm}`;
@@ -121,7 +133,7 @@ async function buscarFacturas() {
   } else if (mes) {
     query += `&${COL_FECHA}=gte.${primerDiaDelMes(mes)}&${COL_FECHA}=lt.${primerDiaSiguienteMes(mes)}`;
   }
-  
+
   if (cedula) query += `&cedula=eq.${encodeURIComponent(cedula)}`;
   if (vendedor) query += `&vendedor=ilike.*${encodeURIComponent(vendedor)}*`;
   if (idFactura) query += `&id_factura=ilike.*${encodeURIComponent(idFactura)}*`;
@@ -146,7 +158,7 @@ function renderVentas(facturas) {
   const tbody = document.getElementById("tbody-ventas");
   const empty = document.getElementById("empty-ventas");
   const countLabel = document.getElementById("ventas-count-label");
-  
+
   if (tbody) tbody.innerHTML = "";
   if (countLabel) countLabel.textContent = `(${facturas.length} registros)`;
 
@@ -156,20 +168,24 @@ function renderVentas(facturas) {
     if (empty) empty.style.display = "none";
     facturas.forEach((f) => {
       const subtotal = (Number(f.total_usd) || 0) + (Number(f.descuento_usd) || 0);
+      const idSeguro = escapeHtml(f.id_factura || "");
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${f.id_factura || ""}</td>
+        <td>${idSeguro}</td>
         <td>${fmtFecha(f[COL_FECHA])}</td>
-        <td>${f.nombre || ""} ${f.apellido || ""}</td>
-        <td>${f.cedula || ""}</td>
-        <td>${f.vendedor || ""}</td>
-        <td><span class="tag">${f.metodo_pago || "-"}</span></td>
+        <td>${escapeHtml(f.nombre)} ${escapeHtml(f.apellido)}</td>
+        <td>${escapeHtml(f.cedula)}</td>
+        <td>${escapeHtml(f.vendedor)}</td>
+        <td><span class="tag">${escapeHtml(f.metodo_pago || "-")}</span></td>
         <td class="num">${fmtUSD(subtotal)}</td>
         <td class="num">${fmtUSD(f.descuento_usd)}</td>
         <td class="num">${fmtUSD(f.total_usd)}</td>
         <td class="num">${fmtBS(f.total_bs)}</td>
         <td>
-          <button class="btn small ghost" onclick="verDetalle('${f.id_factura}')">Ver</button>
+          <div class="row-actions">
+            <button class="btn small ghost" data-action="ver" data-id="${idSeguro}">Ver</button>
+            <button class="btn small ghost" data-action="editar" data-id="${idSeguro}">Editar</button>
+          </div>
         </td>`;
       if (tbody) tbody.appendChild(tr);
     });
@@ -179,6 +195,17 @@ function renderVentas(facturas) {
   renderCharts(facturas);
   window.__facturasActuales = facturas;
 }
+
+// Delegación de eventos para los botones "Ver" / "Editar" de la tabla de ventas.
+// Se asigna una sola vez (fuera de renderVentas) para no acumular listeners
+// ni depender de onclick inline (que rompía con nombres/IDs con comillas).
+document.getElementById("tbody-ventas")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  if (btn.dataset.action === "ver") verDetalle(id);
+  if (btn.dataset.action === "editar") abrirModalDescuento(id);
+});
 
 function renderKPIs(facturas) {
   const totalUSD = facturas.reduce((s, f) => s + (Number(f.total_usd) || 0), 0);
@@ -199,31 +226,55 @@ function renderKPIs(facturas) {
 }
 
 // ============================================================
-// DIAGNÓSTICO EN CONSOLA PARA LAS GRÁFICAS
+// FILTRO "MÉTODO DE PAGO" — poblado dinámico
+// ============================================================
+async function cargarMetodosPago() {
+  const select = document.getElementById("f-metodo");
+  if (!select) return;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/facturas?select=metodo_pago&metodo_pago=not.is.null`, { headers });
+    if (!res.ok) throw new Error("Error " + res.status);
+    const data = await res.json();
+    const metodos = [...new Set(data.map((f) => (f.metodo_pago || "").trim()).filter(Boolean))].sort();
+
+    const actual = select.value;
+    select.innerHTML = '<option value="">Todos</option>';
+    metodos.forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = m;
+      select.appendChild(opt);
+    });
+    if (metodos.includes(actual)) select.value = actual;
+  } catch (err) {
+    console.error("No se pudieron cargar los métodos de pago:", err);
+  }
+}
+
+// ============================================================
+// GRÁFICAS
 // ============================================================
 let chartDias = null;
 let chartVendedores = null;
 let chartMetodos = null;
 
 function renderCharts(facturas) {
-  console.log("📊 renderCharts se ejecutó. Facturas recibidas:", facturas);
-
   const canvasDias = document.getElementById("chart-dias");
   const canvasVendedores = document.getElementById("chart-vendedores");
   const canvasMetodos = document.getElementById("chart-metodos");
 
-  const ChartLib = window.Chart || Chart; 
+  const ChartLib = window.Chart || Chart;
   if (!ChartLib) {
     console.error("❌ ERROR CRÍTICO: Chart.js no se cargó correctamente en el JS global.");
     return;
   }
 
-  [canvasDias, canvasVendedores, canvasMetodos].forEach(canvas => {
+  [canvasDias, canvasVendedores, canvasMetodos].forEach((canvas) => {
     if (canvas && canvas.parentElement) {
       canvas.parentElement.style.position = "relative";
       canvas.parentElement.style.height = "240px";
       canvas.parentElement.style.width = "100%";
-      canvas.parentElement.style.display = "block"; 
+      canvas.parentElement.style.display = "block";
     }
   });
 
@@ -234,7 +285,7 @@ function renderCharts(facturas) {
   facturas.forEach((f) => {
     const rawFecha = f.fecha || f.created_at;
     const fecha = rawFecha ? rawFecha.slice(0, 10) : "S/F";
-    
+
     porDia[fecha] = (porDia[fecha] || 0) + (Number(f.total_usd) || 0);
 
     const v = f.vendedor ? f.vendedor.trim() : "Sin asignar";
@@ -243,8 +294,6 @@ function renderCharts(facturas) {
     const m = f.metodo_pago || "Otro";
     porMetodo[m] = (porMetodo[m] || 0) + 1;
   });
-
-  console.log("Datos procesados listos para graficar:", { porDia, porVendedor, porMetodo });
 
   const diasLabels = Object.keys(porDia).sort();
   const vendLabels = Object.keys(porVendedor).sort((a, b) => porVendedor[b] - porVendedor[a]).slice(0, 5);
@@ -259,9 +308,9 @@ function renderCharts(facturas) {
       type: "bar",
       data: {
         labels: diasLabels,
-        datasets: [{ data: diasLabels.map(d => porDia[d]), backgroundColor: primaryColor, borderRadius: 4 }]
+        datasets: [{ data: diasLabels.map((d) => porDia[d]), backgroundColor: primaryColor, borderRadius: 4 }],
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
     });
   }
 
@@ -271,9 +320,9 @@ function renderCharts(facturas) {
       type: "bar",
       data: {
         labels: vendLabels,
-        datasets: [{ data: vendLabels.map(v => porVendedor[v]), backgroundColor: palette, borderRadius: 4 }]
+        datasets: [{ data: vendLabels.map((v) => porVendedor[v]), backgroundColor: palette, borderRadius: 4 }],
       },
-      options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
     });
   }
 
@@ -283,22 +332,21 @@ function renderCharts(facturas) {
       type: "doughnut",
       data: {
         labels: metLabels,
-        datasets: [{ data: metLabels.map(m => porMetodo[m]), backgroundColor: palette, borderWidth: 0 }]
+        datasets: [{ data: metLabels.map((m) => porMetodo[m]), backgroundColor: palette, borderWidth: 0 }],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: true, position: "bottom", labels: { color: "#ffffff", font: { size: 11 } } }
-        }
-      }
+          legend: { display: true, position: "bottom", labels: { color: "#ffffff", font: { size: 11 } } },
+        },
+      },
     });
   }
-  console.log("✅ Gráficas instanciadas correctamente sin caídas.");
 }
 
 // ============================================================
-// MODAL DETALLE
+// MODAL DETALLE (ver factura)
 // ============================================================
 async function verDetalle(idFactura) {
   const factura = (window.__facturasActuales || []).find((f) => f.id_factura === idFactura);
@@ -312,13 +360,17 @@ async function verDetalle(idFactura) {
 
   let productosHtml = "<p>No se pudieron cargar los productos.</p>";
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${idFactura}&select=nombre_producto,cantidad,precio_total`, { headers });
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/factura_detalles?id_factura=eq.${encodeURIComponent(idFactura)}&select=nombre_producto,cantidad,precio_total`,
+      { headers }
+    );
     if (res.ok) {
       const productos = await res.json();
-      
+
       productosHtml = productos.length
-        ? productos.map((p) => {
-              const nombre = p.nombre_producto || "Producto sin nombre";
+        ? productos
+            .map((p) => {
+              const nombre = escapeHtml(p.nombre_producto || "Producto sin nombre");
               const cant = p.cantidad || 0;
               const total = p.precio_total || 0;
 
@@ -326,7 +378,8 @@ async function verDetalle(idFactura) {
                 <span>${cant} × ${nombre}</span>
                 <span class="num">${fmtUSD(total)}</span>
               </div>`;
-            }).join("")
+            })
+            .join("")
         : "<p>Sin productos registrados en esta factura.</p>";
     }
   } catch (e) {
@@ -335,16 +388,16 @@ async function verDetalle(idFactura) {
 
   if (body) {
     body.innerHTML = `
-      <div class="row"><span>Cliente</span><span>${factura?.nombre || ""} ${factura?.apellido || ""}</span></div>
-      <div class="row"><span>Cédula</span><span>${factura?.cedula || ""}</span></div>
-      <div class="row"><span>Teléfono</span><span>${factura?.telefono || ""}</span></div>
-      <div class="row"><span>Vendedor</span><span>${factura?.vendedor || ""}</span></div>
-      <div class="row"><span>Método de pago</span><span>${factura?.metodo_pago || ""}</span></div>
-      <div class="row"><span>Referencia</span><span>${factura?.referencia || ""}</span></div>
-      <div class="row"><span>Banco</span><span>${factura?.banco || ""}</span></div>
-      <h4 style="margin:14px 0 6px; font-family:var(--serif);">Productos</h4>
+      <div class="row"><span>Cliente</span><span>${escapeHtml(factura?.nombre)} ${escapeHtml(factura?.apellido)}</span></div>
+      <div class="row"><span>Cédula</span><span>${escapeHtml(factura?.cedula)}</span></div>
+      <div class="row"><span>Teléfono</span><span>${escapeHtml(factura?.telefono)}</span></div>
+      <div class="row"><span>Vendedor</span><span>${escapeHtml(factura?.vendedor)}</span></div>
+      <div class="row"><span>Método de pago</span><span>${escapeHtml(factura?.metodo_pago)}</span></div>
+      <div class="row"><span>Referencia</span><span>${escapeHtml(factura?.referencia)}</span></div>
+      <div class="row"><span>Banco</span><span>${escapeHtml(factura?.banco)}</span></div>
+      <h4 style="margin:14px 0 6px;">Productos</h4>
       ${productosHtml}
-      <div class="row" style="border-top:2px solid var(--ink); margin-top:8px; font-weight:700;">
+      <div class="row" style="border-top:2px solid var(--glass-border); margin-top:8px; font-weight:700;">
         <span>Total</span><span class="num">${fmtUSD(factura?.total_usd)} · Bs ${fmtBS(factura?.total_bs)}</span>
       </div>`;
   }
@@ -352,16 +405,115 @@ async function verDetalle(idFactura) {
 document.getElementById("modal-detalle-close")?.addEventListener("click", () => {
   document.getElementById("modal-detalle").classList.remove("active");
 });
+// Cerrar al hacer click fuera del cuadro del modal (en el overlay)
+document.getElementById("modal-detalle")?.addEventListener("click", (e) => {
+  if (e.target.id === "modal-detalle") e.currentTarget.classList.remove("active");
+});
+
+// ============================================================
+// MODAL AJUSTAR DESCUENTO (editar factura)
+// ============================================================
+let facturaEditando = null; // { idFactura, subtotalUsd, subtotalBs }
+
+function abrirModalDescuento(idFactura) {
+  const factura = (window.__facturasActuales || []).find((f) => f.id_factura === idFactura);
+  if (!factura) return;
+
+  // El subtotal siempre es total + descuento (así se calcula en toda la app),
+  // por lo que no depende de tasas de cambio inventadas.
+  const subtotalUsd = (Number(factura.total_usd) || 0) + (Number(factura.descuento_usd) || 0);
+  const subtotalBs = (Number(factura.total_bs) || 0) + (Number(factura.descuento_bs) || 0);
+
+  facturaEditando = { idFactura, subtotalUsd, subtotalBs };
+
+  const inputSubtotal = document.getElementById("desc-subtotal");
+  const inputDescUsd = document.getElementById("desc-nuevo");
+  const inputDescBs = document.getElementById("desc-nuevo-bs");
+
+  if (inputSubtotal) inputSubtotal.value = fmtUSD(subtotalUsd);
+  if (inputDescUsd) inputDescUsd.value = (Number(factura.descuento_usd) || 0).toFixed(2);
+  if (inputDescBs) inputDescBs.value = (Number(factura.descuento_bs) || 0).toFixed(2);
+
+  document.getElementById("modal-descuento")?.classList.add("active");
+}
+
+function cerrarModalDescuento() {
+  document.getElementById("modal-descuento")?.classList.remove("active");
+  facturaEditando = null;
+}
+
+async function guardarDescuento() {
+  if (!facturaEditando) return;
+  const { idFactura, subtotalUsd, subtotalBs } = facturaEditando;
+
+  const inputDescUsd = document.getElementById("desc-nuevo");
+  const inputDescBs = document.getElementById("desc-nuevo-bs");
+  const statusEl = document.getElementById("status-ventas");
+
+  const nuevoDescUsd = Number(inputDescUsd?.value);
+  const nuevoDescBs = Number(inputDescBs?.value) || 0;
+
+  if (Number.isNaN(nuevoDescUsd) || nuevoDescUsd < 0) {
+    alert("El descuento en USD debe ser un número mayor o igual a 0.");
+    return;
+  }
+  if (nuevoDescUsd > subtotalUsd) {
+    alert("El descuento no puede ser mayor que el subtotal (" + fmtUSD(subtotalUsd) + ").");
+    return;
+  }
+  if (nuevoDescBs > subtotalBs) {
+    alert("El descuento en Bs no puede ser mayor que el subtotal en Bs.");
+    return;
+  }
+
+  const nuevoTotalUsd = subtotalUsd - nuevoDescUsd;
+  const nuevoTotalBs = subtotalBs - nuevoDescBs;
+
+  const guardarBtn = document.getElementById("desc-guardar");
+  if (guardarBtn) guardarBtn.disabled = true;
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/facturas?id_factura=eq.${encodeURIComponent(idFactura)}`, {
+      method: "PATCH",
+      headers: { ...headers, Prefer: "return=minimal" },
+      body: JSON.stringify({
+        descuento_usd: Number(nuevoDescUsd.toFixed(2)),
+        total_usd: Number(nuevoTotalUsd.toFixed(2)),
+        descuento_bs: Number(nuevoDescBs.toFixed(2)),
+        total_bs: Number(nuevoTotalBs.toFixed(2)),
+      }),
+    });
+
+    if (!res.ok) throw new Error("Error " + res.status + " al guardar el descuento");
+
+    cerrarModalDescuento();
+    await buscarFacturas();
+  } catch (err) {
+    console.error(err);
+    if (statusEl) {
+      statusEl.textContent = "No se pudo actualizar el descuento: " + err.message;
+      statusEl.classList.add("error");
+    }
+    alert("No se pudo guardar el descuento: " + err.message);
+  } finally {
+    if (guardarBtn) guardarBtn.disabled = false;
+  }
+}
+
+document.getElementById("modal-descuento-close")?.addEventListener("click", cerrarModalDescuento);
+document.getElementById("desc-cancelar")?.addEventListener("click", cerrarModalDescuento);
+document.getElementById("desc-guardar")?.addEventListener("click", guardarDescuento);
+document.getElementById("modal-descuento")?.addEventListener("click", (e) => {
+  if (e.target.id === "modal-descuento") cerrarModalDescuento();
+});
 
 // ============================================================
 // COMISIONES — Sincronizado con Supabase y Ajustado a Mes Anterior
 // ============================================================
-const COMISION_PORCENTAJE = 0.01;
-
 async function calcularComisiones() {
-  const mesSeleccionado = document.getElementById("c-mes")?.value; 
+  const mesSeleccionado = document.getElementById("c-mes")?.value;
   const statusEl = document.getElementById("status-comisiones");
-  
+
   if (!mesSeleccionado) {
     if (statusEl) statusEl.textContent = "Selecciona un mes.";
     return;
@@ -376,32 +528,46 @@ async function calcularComisiones() {
 
   const queryFacturas = `${SUPABASE_URL}/rest/v1/facturas?select=vendedor,total_usd&${COL_FECHA}=gte.${primerDiaDelMes(mesVentas)}&${COL_FECHA}=lt.${primerDiaSiguienteMes(mesVentas)}`;
   const queryPagos = `${SUPABASE_URL}/rest/v1/comisiones_pagos?select=vendedor,pagado&mes=eq.${mesSeleccionado}`;
+  const queryConfig = `${SUPABASE_URL}/rest/v1/comisiones_config?select=vendedor,porcentaje,activo`;
 
   try {
-    const [resFacturas, resPagos] = await Promise.all([
+    const [resFacturas, resPagos, resConfig] = await Promise.all([
       fetch(queryFacturas, { headers }),
-      fetch(queryPagos, { headers })
+      fetch(queryPagos, { headers }),
+      fetch(queryConfig, { headers }),
     ]);
 
     if (!resFacturas.ok) throw new Error("Error en ventas: " + resFacturas.status);
     if (!resPagos.ok) throw new Error("Error en pagos: " + resPagos.status);
+    if (!resConfig.ok) throw new Error("Error en configuración de comisiones: " + resConfig.status);
 
     const facturasData = await resFacturas.json();
     const pagosData = await resPagos.json();
+    const configData = await resConfig.json();
 
     const mapaPagos = {};
-    pagosData.forEach(p => {
+    pagosData.forEach((p) => {
       if (p.vendedor) mapaPagos[p.vendedor.trim()] = p.pagado;
+    });
+
+    // Porcentaje de comisión por vendedor (tabla comisiones_config).
+    // Si el vendedor no tiene fila, o está marcado como inactivo, se usa el 1% por defecto.
+    const mapaConfig = {};
+    configData.forEach((c) => {
+      if (c.vendedor) mapaConfig[c.vendedor.trim()] = c;
     });
 
     const porVendedor = {};
     facturasData.forEach((f) => {
       const v = f.vendedor ? f.vendedor.trim() : "Sin asignar";
       if (!porVendedor[v]) {
-        porVendedor[v] = { 
-          ventas: 0, 
+        const cfg = mapaConfig[v];
+        const porcentaje = cfg && cfg.activo !== false ? Number(cfg.porcentaje) : COMISION_PORCENTAJE_DEFAULT;
+        porVendedor[v] = {
+          ventas: 0,
           total: 0,
-          pagado: mapaPagos[v] !== undefined ? mapaPagos[v] : false 
+          porcentaje,
+          pagado: mapaPagos[v] !== undefined ? mapaPagos[v] : false,
         };
       }
       porVendedor[v].ventas += 1;
@@ -412,7 +578,7 @@ async function calcularComisiones() {
       statusEl.textContent = `Mostrando comisiones acumuladas de [${mesVentas}]. Actualizado a las ${new Date().toLocaleTimeString("es-VE")}`;
     }
 
-    renderComisiones(porVendedor, mesSeleccionado);
+    renderComisiones(porVendedor, mesSeleccionado, mesVentas);
   } catch (err) {
     console.error(err);
     if (statusEl) {
@@ -422,10 +588,10 @@ async function calcularComisiones() {
   }
 }
 
-function renderComisiones(porVendedor, mesSeleccionado) {
+function renderComisiones(porVendedor, mesSeleccionado, mesVentas) {
   const tbody = document.getElementById("tbody-comisiones");
   const empty = document.getElementById("empty-comisiones");
-  
+
   if (tbody) tbody.innerHTML = "";
 
   const vendedores = Object.keys(porVendedor);
@@ -438,27 +604,37 @@ function renderComisiones(porVendedor, mesSeleccionado) {
   }
   if (empty) empty.style.display = "none";
 
-  let totalComisiones = 0, pendiente = 0;
+  let totalComisiones = 0,
+    pendiente = 0;
 
   vendedores
     .sort((a, b) => porVendedor[b].total - porVendedor[a].total)
     .forEach((v) => {
-      const comision = porVendedor[v].total * COMISION_PORCENTAJE;
+      const datos = porVendedor[v];
+      const comision = datos.total * datos.porcentaje;
       totalComisiones += comision;
-      
-      const isPagada = porVendedor[v].pagado;
+
+      const isPagada = datos.pagado;
       if (!isPagada) pendiente += comision;
 
+      const vSeguro = escapeHtml(v);
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${v}</td>
-        <td class="num">${porVendedor[v].ventas}</td>
-        <td class="num">${fmtUSD(porVendedor[v].total)}</td>
+        <td>${vSeguro}</td>
+        <td class="num">${datos.ventas}</td>
+        <td class="num">${fmtUSD(datos.total)}</td>
         <td class="num">${fmtUSD(comision)}</td>
         <td><span class="tag ${isPagada ? "" : "pend"}">${isPagada ? "Pagada" : "Pendiente"}</span></td>
         <td>
-          <button class="btn small ${isPagada ? "ghost" : ""}" 
-                  onclick="togglePago('${v.replace(/'/g, "\\'")}', '${mesSeleccionado}', ${isPagada}, ${comision})">
+          <button class="btn small ${isPagada ? "ghost" : ""}"
+                  data-action="toggle-pago"
+                  data-vendedor="${vSeguro}"
+                  data-mes="${escapeHtml(mesSeleccionado)}"
+                  data-mesventas="${escapeHtml(mesVentas)}"
+                  data-pagado="${isPagada}"
+                  data-comision="${comision}"
+                  data-total="${datos.total}"
+                  data-porcentaje="${datos.porcentaje}">
             ${isPagada ? "Marcar pendiente" : "Marcar pagada"}
           </button>
         </td>`;
@@ -470,33 +646,69 @@ function renderComisiones(porVendedor, mesSeleccionado) {
   if (document.getElementById("kpi-com-pend")) document.getElementById("kpi-com-pend").textContent = fmtUSD(pendiente);
 }
 
-async function togglePago(vendedor, mesSeleccionado, estadoActual, montoCalculado) {
+// Delegación de eventos para "Marcar pagada / pendiente" (evita romper con
+// nombres de vendedor que tengan comillas, y evita reasignar listeners).
+document.getElementById("tbody-comisiones")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-action='toggle-pago']");
+  if (!btn) return;
+  const { vendedor, mes, mesventas, pagado, comision, total, porcentaje } = btn.dataset;
+  togglePago(vendedor, mes, pagado === "true", Number(comision), mesventas, Number(total), Number(porcentaje));
+});
+
+async function togglePago(vendedor, mesSeleccionado, estadoActual, montoCalculado, mesVentas, totalVentas, porcentaje) {
   const statusEl = document.getElementById("status-comisiones");
   if (statusEl) statusEl.textContent = "Actualizando registro en Supabase…";
 
   const nuevoEstado = !estadoActual;
   const fechaPago = nuevoEstado ? new Date().toISOString() : null;
-  const montoFinal = nuevoEstado ? Number(montoCalculado).toFixed(2) : 0.00;
+  const montoFinal = nuevoEstado ? Number(Number(montoCalculado).toFixed(2)) : 0;
 
   const payload = {
     vendedor: vendedor,
     mes: mesSeleccionado,
+    mes_ventas: mesVentas, // requerido (NOT NULL) por el esquema, antes no se enviaba
+    total_ventas: Number(Number(totalVentas).toFixed(2)),
+    porcentaje: Number(porcentaje),
+    monto_comision: Number(Number(montoCalculado).toFixed(2)),
     pagado: nuevoEstado,
     fecha_pago: fechaPago,
-    monto_pagado: Number(montoFinal)
+    monto_pagado: montoFinal,
   };
 
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/comisiones_pagos`, {
+    // on_conflict=vendedor,mes es imprescindible: es la restricción única real
+    // (uq_comisiones_pagos_vendedor_mes). Sin especificarlo, PostgREST usa la
+    // primary key (id, siempre nueva) y termina insertando duplicados en vez
+    // de actualizar el registro existente.
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/comisiones_pagos?on_conflict=vendedor,mes`, {
       method: "POST",
       headers: {
         ...headers,
-        "Prefer": "resolution=merge-duplicates"
+        Prefer: "resolution=merge-duplicates,return=representation",
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) throw new Error("Error en Supabase: " + res.status);
+    const rows = await res.json();
+    const comisionId = rows?.[0]?.id || null;
+
+    // Auditoría (best-effort): si falla, no rompe el flujo principal.
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/comisiones_historial`, {
+        method: "POST",
+        headers: { ...headers, Prefer: "return=minimal" },
+        body: JSON.stringify({
+          comision_id: comisionId,
+          vendedor,
+          mes: mesSeleccionado,
+          accion: nuevoEstado ? "marcada_pagada" : "marcada_pendiente",
+          monto: montoFinal,
+        }),
+      });
+    } catch (histErr) {
+      console.warn("No se pudo registrar el historial de comisiones:", histErr);
+    }
 
     await calcularComisiones();
   } catch (err) {
@@ -526,13 +738,13 @@ document.getElementById("btn-buscar-com")?.addEventListener("click", calcularCom
 (async function init() {
   const hoy = new Date();
   const mesActual = hoy.toISOString().slice(0, 7);
-  
+
   const fMes = document.getElementById("f-mes");
   const cMes = document.getElementById("c-mes");
-  
+
   if (fMes) fMes.value = mesActual;
   if (cMes) cMes.value = mesActual;
-  
-  await buscarFacturas();
+
+  await Promise.all([cargarMetodosPago(), buscarFacturas()]);
   await calcularComisiones();
 })();
