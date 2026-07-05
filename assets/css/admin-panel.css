@@ -331,12 +331,10 @@ select option {
     background: var(--glass-bg);
     box-shadow: var(--shadow);
     margin-bottom: 32px;
-    /* Suaviza el scroll en dispositivos táctiles */
-    -webkit-overflow-scrolling: touch; 
 }
 
 .table-wrap::-webkit-scrollbar {
-    height: 8px; /* Un poco más grueso para que sea fácil de arrastrar */
+    height: 6px;
 }
 
 .table-wrap::-webkit-scrollbar-thumb {
@@ -344,19 +342,14 @@ select option {
     border-radius: 20px;
 }
 
-.table-wrap::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, .25);
-}
-
 table {
     width: 100%;
-    min-width: 900px; /* Un ancho mínimo balanceado */
+    min-width: 950px;
     border-collapse: collapse;
-    table-layout: auto; /* Permite que las columnas se adapten orgánicamente al contenido */
 }
 
 thead {
-    background: rgba(255, 255, 255, .03);
+    background: rgba(255, 255, 255, .02);
 }
 
 thead th {
@@ -364,14 +357,11 @@ thead th {
     font-size: .80rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: .7px;
+    letter-spacing: .5px;
     color: var(--accent);
-    border-bottom: 2px solid var(--glass-border); /* Línea divisoria más clara */
-    padding: 16px 20px; /* Más aire vertical y horizontal */
-    
-    /* Evita que los títulos se corten o hagan saltos de línea extraños */
-    white-space: nowrap; 
-    word-wrap: normal;
+    border-bottom: 1px solid var(--glass-border);
+    padding: 14px 16px;
+    white-space: nowrap;
 }
 
 tbody tr {
@@ -380,56 +370,29 @@ tbody tr {
 }
 
 tbody tr:hover {
-    background: rgba(255, 255, 255, .02); /* Mayor contraste al hacer hover */
+    background: rgba(255, 255, 255, .01);
 }
 
 tbody td {
-    padding: 16px 20px; /* Consistencia de espaciado con el thead */
+    padding: 14px 16px;
     color: #e5e7eb;
     vertical-align: middle;
     font-size: 0.9rem;
-    line-height: 1.4; /* Mejora la lectura si el texto llega a envolverse */
-    
-    /* Evita que datos clave (como fechas o nombres cortos) se rompan en dos líneas */
-    white-space: nowrap; 
 }
 
-/* Permitir que columnas con descripciones largas o textos amplios sí se envuelvan */
-tbody td.text-wrap, 
-thead th.text-wrap {
-    white-space: normal;
-    min-width: 200px; /* Asegura que no se aplaste la columna */
-}
-
-/* Alineaciones específicas para mantener la armonía visual */
 .num {
     font-variant-numeric: tabular-nums;
     text-align: right;
 }
 
-thead th.num {
-    text-align: right; /* Alinea el título numérico con sus datos */
-}
-
-.text-center {
-    text-align: center;
-}
-
-thead th.text-center {
-    text-align: center;
-}
-
 .tag {
-    display: inline-flex; /* Cambiado a inline-flex para centrar mejor el texto */
-    align-items: center;
-    justify-content: center;
+    display: inline-block;
     font-size: 0.75rem;
     font-weight: 600;
-    padding: 4px 12px;
+    padding: 4px 10px;
     border-radius: 20px;
     background: var(--accent-soft);
     color: var(--accent);
-    white-space: nowrap;
 }
 
 .tag.pend {
@@ -438,10 +401,10 @@ thead th.text-center {
 }
 
 .empty-state {
-    padding: 60px 20px; /* Más espacio para destacar que está vacío */
+    padding: 40px 20px;
     text-align: center;
     color: var(--text-secondary);
-    font-size: 0.95rem;
+    font-size: 0.9rem;
 }
 
 /* ================= MODALES NATIVOS ADAPTADOS ================= */
@@ -456,6 +419,12 @@ thead th.text-center {
     align-items: center;
     justify-content: center;
     padding: 20px;
+    /* Fuerza su propia capa de composición (GPU layer) independiente del
+       backdrop-filter del .topbar. Sin esto, en algunos navegadores el
+       modal no se repinta al pasar de display:none a flex hasta que otro
+       evento de layout lo "empuja" (ej: cambiar de pestaña). */
+    transform: translateZ(0);
+    will-change: opacity;
 }
 
 .modal-overlay.active {
