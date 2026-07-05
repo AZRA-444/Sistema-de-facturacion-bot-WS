@@ -419,12 +419,6 @@ tbody td {
     align-items: center;
     justify-content: center;
     padding: 20px;
-    /* Fuerza su propia capa de composición (GPU layer) independiente del
-       backdrop-filter del .topbar. Sin esto, en algunos navegadores el
-       modal no se repinta al pasar de display:none a flex hasta que otro
-       evento de layout lo "empuja" (ej: cambiar de pestaña). */
-    transform: translateZ(0);
-    will-change: opacity;
 }
 
 .modal-overlay.active {
