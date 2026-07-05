@@ -44,6 +44,19 @@ function fmtFecha(iso) {
     d.toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" })
   );
 }
+// Sanea cualquier valor antes de insertarlo en innerHTML o en un atributo
+// data-*. Evita que un id_factura, vendedor o método de pago con comillas,
+// & o < rompa el HTML generado (esto es lo que causaba que botones como
+// "Ver" dejaran de funcionar en ciertas filas).
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch]));
+}
 
 // ============================================================
 // RELOJ
@@ -158,18 +171,18 @@ function renderVentas(facturas) {
       const subtotal = (Number(f.total_usd) || 0) + (Number(f.descuento_usd) || 0);
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${f.id_factura || ""}</td>
+        <td>${escapeHtml(f.id_factura)}</td>
         <td>${fmtFecha(f[COL_FECHA])}</td>
-        <td>${f.nombre || ""} ${f.apellido || ""}</td>
-        <td>${f.cedula || ""}</td>
-        <td>${f.vendedor || ""}</td>
-        <td><span class="tag">${f.metodo_pago || "-"}</span></td>
+        <td>${escapeHtml(f.nombre)} ${escapeHtml(f.apellido)}</td>
+        <td>${escapeHtml(f.cedula)}</td>
+        <td>${escapeHtml(f.vendedor)}</td>
+        <td><span class="tag">${escapeHtml(f.metodo_pago) || "-"}</span></td>
         <td class="num">${fmtUSD(subtotal)}</td>
         <td class="num">${fmtUSD(f.descuento_usd)}</td>
         <td class="num">${fmtUSD(f.total_usd)}</td>
         <td class="num">${fmtBS(f.total_bs)}</td>
         <td>
-          <button class="btn small ghost" onclick="verDetalle('${f.id_factura}')">Ver</button>
+          <button class="btn small ghost" data-id-factura="${escapeHtml(f.id_factura)}">Ver</button>
         </td>`;
       if (tbody) tbody.appendChild(tr);
     });
@@ -308,7 +321,13 @@ async function verDetalle(idFactura) {
 
   if (titleEl) titleEl.textContent = "Factura " + idFactura;
   if (body) body.innerHTML = "<p>Cargando productos…</p>";
-  if (modal) modal.classList.add("active");
+  if (modal) {
+    modal.classList.add("active");
+    // Fuerza el repintado inmediato (ver nota en admin-panel.css sobre
+    // backdrop-filter): sin esto, en algunos navegadores el modal se queda
+    // "invisible" hasta el próximo evento de layout (ej: cambiar de pestaña).
+    void modal.offsetHeight;
+  }
 
   let productosHtml = "<p>No se pudieron cargar los productos.</p>";
   try {
@@ -463,15 +482,21 @@ function renderComisiones(porVendedor, mesSeleccionado, mesVentas) {
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${v}</td>
+        <td>${escapeHtml(v)}</td>
         <td class="num">${porVendedor[v].ventas}</td>
         <td class="num">${fmtUSD(total)}</td>
         <td class="num">${(porcentaje * 100).toFixed(2)}%</td>
         <td class="num">${fmtUSD(comision)}</td>
         <td><span class="tag ${isPagada ? "" : "pend"}">${isPagada ? "Pagada" : "Pendiente"}</span></td>
         <td>
-          <button class="btn small ${isPagada ? "ghost" : ""}" 
-                  onclick="togglePago('${v.replace(/'/g, "\\'")}', '${mesSeleccionado}', '${mesVentas}', ${isPagada}, ${comision}, ${total}, ${porcentaje})">
+          <button class="btn small ${isPagada ? "ghost" : ""}"
+                  data-vendedor="${escapeHtml(v)}"
+                  data-mes="${escapeHtml(mesSeleccionado)}"
+                  data-mes-ventas="${escapeHtml(mesVentas)}"
+                  data-pagado="${isPagada}"
+                  data-comision="${comision}"
+                  data-total="${total}"
+                  data-porcentaje="${porcentaje}">
             ${isPagada ? "Marcar pendiente" : "Marcar pagada"}
           </button>
         </td>`;
@@ -483,7 +508,8 @@ function renderComisiones(porVendedor, mesSeleccionado, mesVentas) {
   if (document.getElementById("kpi-com-pend")) document.getElementById("kpi-com-pend").textContent = fmtUSD(pendiente);
 }
 
-async function togglePago(vendedor, mesSeleccionado, mesVentas, estadoActual, montoCalculado, totalVentas, porcentaje) {
+async function togglePago(vendedor, mesSeleccionado, mesVentas, estadoActualStr, montoCalculado, totalVentas, porcentaje) {
+  const estadoActual = estadoActualStr === true || estadoActualStr === "true";
   const statusEl = document.getElementById("status-comisiones");
   if (statusEl) statusEl.textContent = "Actualizando registro en Supabase…";
 
@@ -556,6 +582,23 @@ document.getElementById("btn-limpiar")?.addEventListener("click", () => {
   buscarFacturas();
 });
 document.getElementById("btn-buscar-com")?.addEventListener("click", calcularComisiones);
+
+// Listener delegado: un solo listener en el tbody en vez de un onclick por
+// fila. Esto evita que valores con comillas u otros caracteres especiales
+// rompan el atributo onclick (causa más probable de que "Ver" dejara de
+// funcionar en algunas filas).
+document.getElementById("tbody-ventas")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-id-factura]");
+  if (!btn) return;
+  verDetalle(btn.dataset.idFactura);
+});
+
+document.getElementById("tbody-comisiones")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-vendedor]");
+  if (!btn) return;
+  const { vendedor, mes, mesVentas, pagado, comision, total, porcentaje } = btn.dataset;
+  togglePago(vendedor, mes, mesVentas, pagado, Number(comision), Number(total), Number(porcentaje));
+});
 
 (async function init() {
   const hoy = new Date();
